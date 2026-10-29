@@ -1,0 +1,29 @@
+{
+  "era5_weather": {
+    "grid_lat": 32.442883,
+    "grid_lon": 44.398544,
+    "elevation": 30.0,
+    "timezone": "Asia/Baghdad",
+    "requested_lat": 32.48,
+    "requested_lon": 44.42,
+    "failed_chunks": []
+  },
+  "air_quality": {
+    "grid_lat": 32.5,
+    "grid_lon": 44.4,
+    "elevation": 30.0,
+    "timezone": "Asia/Baghdad",
+    "requested_lat": 32.48,
+    "requested_lon": 44.42,
+    "failed_chunks": []
+  },
+  "forecast_archive": {
+    "grid_lat": 32.47901,
+    "grid_lon": 44.434067,
+    "elevation": 30.0,
+    "timezone": "Asia/Baghdad",
+    "requested_lat": 32.48,
+    "requested_lon": 44.42,
+    "failed_chunks": []
+  }
+}

@@ -1,0 +1,2 @@
+command_id,action,reason,p_rain,p_dust,pm10,metar_strong,metar_haze,metar_min_vis_km
+2026-10-29T11:00:00+03:00,wait,dust in air (airport),0.081,0.501,84.7,True,True,2.0

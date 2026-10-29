@@ -1,0 +1,10 @@
+data/raw/
+data/processed/
+__pycache__/
+*.pyc
+output/test/
+graphify-out/cache/
+.venv/
+graphify-out/
+.claude/
+esp32/**/secrets.h

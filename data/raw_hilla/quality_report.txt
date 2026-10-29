@@ -1,0 +1,118 @@
+=== grid cell used by each dataset ===
+era5_weather       requested (32.48, 44.42)  grid (32.442883, 44.398544)  distance 4.6 km  elevation 30.0 m
+air_quality        requested (32.48, 44.42)  grid (32.5, 44.4)  distance 2.9 km  elevation 30.0 m
+forecast_archive   requested (32.48, 44.42)  grid (32.47901, 44.434067)  distance 1.3 km  elevation 30.0 m
+
+=== era5_weather ===
+rows: 94,728   from 2016-01-01 00:00:00   to 2026-10-21 23:00:00
+expected hourly rows: 94,728   missing hours: 0 (0.00%)   duplicate timestamps: 0
+
+column                     nulls   null%   first valid           last valid
+temperature_2m                 0    0.00   2016-01-01 00:00:00   2026-10-21 23:00:00
+relative_humidity_2m           0    0.00   2016-01-01 00:00:00   2026-10-21 23:00:00
+dew_point_2m                   0    0.00   2016-01-01 00:00:00   2026-10-21 23:00:00
+precipitation                  0    0.00   2016-01-01 00:00:00   2026-10-21 23:00:00
+rain                           0    0.00   2016-01-01 00:00:00   2026-10-21 23:00:00
+pressure_msl                   0    0.00   2016-01-01 00:00:00   2026-10-21 23:00:00
+surface_pressure               0    0.00   2016-01-01 00:00:00   2026-10-21 23:00:00
+cloud_cover                    0    0.00   2016-01-01 00:00:00   2026-10-21 23:00:00
+wind_speed_10m                 0    0.00   2016-01-01 00:00:00   2026-10-21 23:00:00
+wind_direction_10m             0    0.00   2016-01-01 00:00:00   2026-10-21 23:00:00
+wind_gusts_10m                 0    0.00   2016-01-01 00:00:00   2026-10-21 23:00:00
+
+plausibility ranges:
+   all values inside plausible ranges
+   hourly jumps of pressure_msl > 5.0: 0
+   hourly jumps of temperature_2m > 12.0: 0
+
+=== air_quality ===
+rows: 94,728   from 2016-01-01 00:00:00   to 2026-10-21 23:00:00
+expected hourly rows: 94,728   missing hours: 0 (0.00%)   duplicate timestamps: 0
+
+column                     nulls   null%   first valid           last valid
+pm10                           0    0.00   2016-01-01 00:00:00   2026-10-21 23:00:00
+pm2_5                          0    0.00   2016-01-01 00:00:00   2026-10-21 23:00:00
+dust                       17547   18.52   2018-01-01 03:00:00   2026-10-21 23:00:00
+aerosol_optical_depth      57771   60.99   2022-08-04 03:00:00   2026-10-21 23:00:00
+
+plausibility ranges:
+   all values inside plausible ranges
+
+=== forecast_archive ===
+rows: 42,120   from 2022-01-01 00:00:00   to 2026-10-21 23:00:00
+expected hourly rows: 42,120   missing hours: 0 (0.00%)   duplicate timestamps: 0
+
+column                     nulls   null%   first valid           last valid
+temperature_2m                 0    0.00   2022-01-01 00:00:00   2026-10-21 23:00:00
+relative_humidity_2m           0    0.00   2022-01-01 00:00:00   2026-10-21 23:00:00
+precipitation                  0    0.00   2022-01-01 00:00:00   2026-10-21 23:00:00
+pressure_msl                   0    0.00   2022-01-01 00:00:00   2026-10-21 23:00:00
+cloud_cover                    0    0.00   2022-01-01 00:00:00   2026-10-21 23:00:00
+wind_speed_10m                 0    0.00   2022-01-01 00:00:00   2026-10-21 23:00:00
+wind_direction_10m             0    0.00   2022-01-01 00:00:00   2026-10-21 23:00:00
+wind_gusts_10m                 0    0.00   2022-01-01 00:00:00   2026-10-21 23:00:00
+
+plausibility ranges:
+   all values inside plausible ranges
+   hourly jumps of pressure_msl > 5.0: 0
+   hourly jumps of temperature_2m > 12.0: 0
+
+=== ERA5 seasonality (does it look like your climate?) ===
+month  rain mm/month   mean daily max gust km/h  mean temp C
+    1           16.4                       29.7         11.8
+    2           21.1                       32.5         14.2
+    3           25.7                       37.4         18.8
+    4           21.8                       37.8         25.0
+    5            2.1                       40.0         31.4
+    6            0.0                       42.7         36.8
+    7            0.0                       44.0         39.1
+    8            0.0                       41.4         38.9
+    9            0.0                       35.4         34.9
+   10            2.1                       31.3         28.5
+   11           21.4                       28.2         19.4
+   12           18.0                       28.0         13.6
+yearly rain (average over complete months): ~129 mm
+
+=== Dust / PM10 ===
+PM10 ug/m3: median 37   p90 88   p95 117   p99 194   max 649
+
+month  mean PM10      p95   days max>150   days max>300  days of data
+    1         42      120             36              1           341
+    2         44      123             37              6           311
+    3         55      169             68             12           341
+    4         58      145             51              6           330
+    5         57      141             55              4           341
+    6         42       88             14              2           330
+    7         43       94             24              4           341
+    8         41       83             12              0           341
+    9         39       76              4              0           330
+   10         51      110             13              3           331
+   11         41       91             12              2           300
+   12         42      113             25              4           310
+
+Top dust days (check them against storms you remember):
+date          max PM10  max gust km/h  min pressure  rain mm
+2021-03-12         649             48        1001.0      2.6
+2025-02-06         511             57        1003.1      1.0
+2025-04-05         488             60        1006.2      0.2
+2016-02-22         483             59        1002.9     16.8
+2023-12-22         461             45        1009.2      0.6
+2021-02-17         461             64        1001.5      0.0
+2021-03-05         451             50        1011.9      0.0
+2021-03-24         419             57        1000.6      0.0
+2019-03-25         406             76         994.7      0.0
+2024-12-27         403             60        1011.8      0.0
+
+=== ERA5 vs archived forecasts (how good are the inputs we will really get?) ===
+overlap: 2022-01-01 00:00:00 -> 2026-10-21 23:00:00  (42,120 hours)
+   wind_speed_10m     correlation hourly  0.81   daily(mean)  0.86
+   wind_gusts_10m     correlation hourly  0.87   daily(max)  0.84
+   pressure_msl       correlation hourly  1.00   daily(mean)  1.00
+   temperature_2m     correlation hourly  0.99   daily(mean)  1.00
+   precipitation      correlation hourly  0.40   daily(sum)  0.83
+
+=== SUMMARY ===
+2 warning(s):
+   - air_quality.dust: 18.5% null (first valid: 2018-01-01 03:00:00)
+   - air_quality.aerosol_optical_depth: 61.0% null (first valid: 2022-08-04 03:00:00)
+Manual checks left for you: do the rainy months match reality? do the top dust days match storms you remember?
