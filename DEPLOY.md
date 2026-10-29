@@ -17,7 +17,7 @@ git config user.name "abdalhafadle-source"
 
 ## ب) النشر على GitHub
 1. في VS Code افتح Source Control (أيقونة الفروع) ← اكتب رسالة مثل `first version` ← Commit.
-2. اضغط "Publish to GitHub" واختر **Public repository** باسم `hilla-pv-cleaner`.
+2. اضغط "Publish to GitHub" واختر **Public repository** (اسمه الحالي `AI_Weather_Project`).
    (أول مرة سيفتح VS Code المتصفح لتسجيل الدخول إلى GitHub — وافق على "Authorize".)
 3. ملاحظة: مجلد `data/raw` (بغداد) لا يُرفع لأنه في `.gitignore`.
 
@@ -27,10 +27,10 @@ git config user.name "abdalhafadle-source"
 3. بعدها يعمل تلقائياً كل ساعة. وكل يوم جمعة 02:00 بتوقيت بغداد يعمل "weekly_retrain" (يمكن تشغيله يدوياً أيضاً).
 
 ## د) Render
-1. render.com ← New ← **Blueprint** ← اربط المستودع `hilla-pv-cleaner`.
+1. render.com ← New ← **Blueprint** ← اربط المستودع `AI_Weather_Project`.
 2. الملف `render.yaml` فيه المتغيران جاهزان:
-   - COMMAND_URL = https://raw.githubusercontent.com/abdalhafadle-source/hilla-pv-cleaner/main/output/command.json
-   - LOG_URL = https://raw.githubusercontent.com/abdalhafadle-source/hilla-pv-cleaner/main/output/decision_log.csv
+   - COMMAND_URL = https://raw.githubusercontent.com/abdalhafadle-source/AI_Weather_Project/main/output/command.json
+   - LOG_URL = https://raw.githubusercontent.com/abdalhafadle-source/AI_Weather_Project/main/output/decision_log.csv
 3. اضغط Deploy وانتظر حتى تصبح الحالة Live.
 
 ## هـ) الاختبار

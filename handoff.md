@@ -121,7 +121,7 @@ AI_Weather_Project/
 - ملاحظة تقنية: أثناء `haze` لا تُسجَّل "نهاية المطر" حتى ينتهي الغبار الخفيف ← الانتظار يُحسب من نهاية الغبار (محافظ، مقبول).
 
 ### ⏳ الجزء 6 (الملفات جاهزة، بانتظار النشر من صاحب المشروع)
-- GitHub: `abdalhafadle-source` / المستودع `hilla-pv-cleaner` (عام). بريد الالتزامات: `287819978+abdalhafadle-source@users.noreply.github.com` (محلي فقط).
+- GitHub: `abdalhafadle-source` / المستودع `AI_Weather_Project` (يجب أن يكون عاماً). بريد الالتزامات: `287819978+abdalhafadle-source@users.noreply.github.com` (محلي فقط).
 - `.github/workflows/hourly.yml` (كل ساعة: live_decision ← commit output/ state/) · `weekly_retrain.yml` (الجمعة 02:00 بغداد: retrain.py).
 - `retrain.py`: آخر 90 يوماً holdout؛ يعتمد النموذج الجديد فقط إذا AP أعلى. تجربة جافة 2026-10-29: مطر 0.561←0.574، غبار 0.626←0.685 (سيُعتمدان أول تشغيل).
 - `server/app.py` (Render): بلا حالة؛ أمر قديم >60 د ← wait؛ **أمر clean منتهي لا يُرسل أبداً**. `render.yaml` جاهز.

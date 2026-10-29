@@ -12,6 +12,6 @@ services:
       - key: PYTHON_VERSION
         value: 3.12.10
       - key: COMMAND_URL
-        value: https://raw.githubusercontent.com/abdalhafadle-source/hilla-pv-cleaner/main/output/command.json
+        value: https://raw.githubusercontent.com/abdalhafadle-source/AI_Weather_Project/main/output/command.json
       - key: LOG_URL
-        value: https://raw.githubusercontent.com/abdalhafadle-source/hilla-pv-cleaner/main/output/decision_log.csv
+        value: https://raw.githubusercontent.com/abdalhafadle-source/AI_Weather_Project/main/output/decision_log.csv
