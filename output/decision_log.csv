@@ -4,3 +4,4 @@ command_id,action,reason,p_rain,p_dust,pm10,metar_strong,metar_haze,metar_min_vi
 2026-10-29T21:00:00+03:00,wait,dust in air (airport),0.02,0.105,69.6,False,True,2.99
 2026-10-30T02:00:00+03:00,wait,dust in air (airport),0.021,0.061,52.7,False,True,2.99
 2026-10-30T08:00:00+03:00,wait,dust in air (airport),0.018,0.058,63.2,False,True,4.01
+2026-10-30T15:00:00+03:00,wait,dust in air (airport),0.003,0.038,56.2,False,True,4.01
