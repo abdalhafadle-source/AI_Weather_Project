@@ -1,23 +1,23 @@
 {
-  "command_id": "2026-10-30T15:00:00+03:00",
-  "generated_at": "2026-10-30T15:44:50+03:00",
-  "valid_until": "2026-10-30T16:00:00+03:00",
+  "command_id": "2026-10-30T21:00:00+03:00",
+  "generated_at": "2026-10-30T21:34:33+03:00",
+  "valid_until": "2026-10-30T22:00:00+03:00",
   "action": "wait",
   "pump": false,
   "max_duration_min": 30,
   "reason": "dust in air (airport)",
-  "p_rain": 0.003,
-  "p_dust": 0.038,
+  "p_rain": 0.001,
+  "p_dust": 0.018,
   "thresholds": {
     "rain": 0.275,
     "dust": 0.321
   },
   "now": {
     "rain_mm": 0.0,
-    "pm10": 56.2,
+    "pm10": 46.6,
     "metar_strong_dust": false,
     "metar_haze": true,
-    "metar_min_vis_km": 4.01,
+    "metar_min_vis_km": 5.0,
     "metar_ok": true
   },
   "pending": [
