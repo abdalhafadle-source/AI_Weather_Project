@@ -1,29 +1,26 @@
 {
-  "command_id": "2026-10-31T01:00:00+03:00",
-  "generated_at": "2026-10-31T01:57:01+03:00",
-  "valid_until": "2026-10-31T02:00:00+03:00",
-  "action": "wait",
-  "pump": false,
+  "command_id": "2026-10-31T05:00:00+03:00",
+  "generated_at": "2026-10-31T05:17:21+03:00",
+  "valid_until": "2026-10-31T06:00:00+03:00",
+  "action": "clean",
+  "pump": true,
   "max_duration_min": 30,
-  "reason": "dust in air (airport)",
-  "p_rain": 0.0,
-  "p_dust": 0.022,
+  "reason": "after dust+rain",
+  "p_rain": 0.001,
+  "p_dust": 0.012,
   "thresholds": {
     "rain": 0.275,
     "dust": 0.321
   },
   "now": {
     "rain_mm": 0.0,
-    "pm10": 34.6,
+    "pm10": 58.9,
     "metar_strong_dust": false,
-    "metar_haze": true,
-    "metar_min_vis_km": 5.0,
+    "metar_haze": false,
+    "metar_min_vis_km": 6.0,
     "metar_ok": true
   },
-  "pending": [
-    "dust",
-    "rain"
-  ],
+  "pending": [],
   "model_trained_until": "2024-12-31 17:00:00",
   "source": "Open-Meteo.com (CC BY 4.0); METAR: aviationweather.gov"
 }
