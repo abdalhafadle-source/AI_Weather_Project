@@ -1,7 +1,8 @@
 name: hourly
 on:
   schedule:
-    - cron: "7 * * * *"
+    # GitHub runs schedules best-effort and drops many; 4 tries per hour (each run is idempotent per hour)
+    - cron: "7,22,37,52 * * * *"
   workflow_dispatch:
 permissions:
   contents: write
@@ -28,7 +29,7 @@ jobs:
           git diff --cached --quiet && exit 0
           git commit -m "hourly decision $(date -u +%Y-%m-%dT%H:%MZ)"
           for i in 1 2 3; do
-            git pull --rebase && git push && exit 0
+            git pull --rebase --autostash && git push && exit 0
             sleep 5
           done
           exit 1

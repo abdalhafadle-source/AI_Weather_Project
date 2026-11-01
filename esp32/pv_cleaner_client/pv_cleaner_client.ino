@@ -10,6 +10,7 @@
 //   - clock not synced yet (NTP) or command past valid_until -> do nothing
 //   - same command_id is never run twice (saved in flash, survives a reboot)
 //   - a run never lasts longer than HARD_CAP_MS (30 min), whatever the command says
+//   - at most 2 runs per day and 6 h between runs, even if the command file says otherwise
 //   - all relays OFF at boot
 
 #include <WiFi.h>
@@ -30,6 +31,8 @@ const int RELAY_ON = LOW;    // most relay modules switch on LOW; use HIGH if yo
 const unsigned long POLL_MS = 14UL * 60 * 1000;         // a new command appears once per hour
 const unsigned long CLEAN_CYCLE_MS = 30UL * 60 * 1000;  // your normal cleaning cycle length
 const unsigned long HARD_CAP_MS = 30UL * 60 * 1000;     // absolute maximum run time
+const long MIN_GAP_S = 6L * 3600;  // same caps as decision.py, enforced here too in case the command
+const int MAX_PER_DAY = 2;         // file is ever wrong or tampered with
 
 Preferences prefs;
 unsigned long lastPoll = 0, runStart = 0, runMs = 0;
@@ -98,7 +101,16 @@ void poll() {
     return;
   }
   if (prefs.getString("last_id", "") == id) return;  // this command was already executed
-  prefs.putString("last_id", id);                      // save first, so a reboot mid-run never repeats it
+  long today = (long)((now + 3 * 3600) / 86400);       // Baghdad calendar day
+  int countToday = prefs.getLong("day", -1) == today ? prefs.getInt("count", 0) : 0;
+  if ((long long)now - prefs.getLong64("last_run", 0) < MIN_GAP_S || countToday >= MAX_PER_DAY) {
+    Serial.println("local safety cap (6 h gap / 2 per day) -> do nothing");
+    return;
+  }
+  prefs.putString("last_id", id);  // save first, so a reboot mid-run never repeats it
+  prefs.putLong64("last_run", (int64_t)now);
+  prefs.putLong("day", today);
+  prefs.putInt("count", countToday + 1);
 
   unsigned long serverMax = (unsigned long)(doc["max_duration_min"] | 30) * 60000UL;
   runMs = min(CLEAN_CYCLE_MS, min(serverMax, HARD_CAP_MS));
