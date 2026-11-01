@@ -1,7 +1,6 @@
 name: weekly_retrain
 on:
-  schedule:
-    - cron: "0 23 * * 4"   # Friday 02:00 Baghdad
+  # schedule removed 2026-11-01: the VPS (64.226.106.240) runs this now; manual run kept as a backup
   workflow_dispatch:
 permissions:
   contents: write

@@ -1,8 +1,6 @@
 name: hourly
 on:
-  schedule:
-    # GitHub runs schedules best-effort and drops many; 4 tries per hour (each run is idempotent per hour)
-    - cron: "7,22,37,52 * * * *"
+  # schedule removed 2026-11-01: the VPS (64.226.106.240) runs this now; manual run kept as a backup
   workflow_dispatch:
 permissions:
   contents: write
