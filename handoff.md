@@ -48,7 +48,7 @@
 | 3ب | جولة تحسين: متغيرات إضافية + 3 مراكز طقس (GFS/UKMO/JMA) | ✅ [التقرير](reports/part3b_improvement_round.md) — مطر F1 0.674، غبار 0.653 |
 | 4 | محاكاة نظام القرار كاملاً على 2025–2026 ومقارنة 5 طرق | ✅ [التقرير](reports/part4_decision_simulation.md) — AI: 74% غسلات مفيدة، −44% غسلات، −71% هدر |
 | 5 | عيون المطارات (METAR) + التشغيل الحي ← أمر JSON للـ ESP32 | ✅ [التقرير](reports/part5_live_and_metar.md) — اختُبر على عاصفة 2026-10-29: لم يغسل ✅ |
-| 6 | FastAPI على Render + التعلّم الذاتي اليومي (GitHub Actions) + تقرير الأطروحة | |
+| 6 | النشر: GitHub Actions (العقل كل ساعة + تعلّم أسبوعي) + ESP32 يقرأ الأمر من GitHub مباشرة + تقرير الأطروحة | ⏳ النشر يعمل ✅ — بقي تقرير الأطروحة |
 
 ## 4. الملفات
 ```
@@ -124,14 +124,16 @@ AI_Weather_Project/
 - GitHub: `abdalhafadle-source` / المستودع `AI_Weather_Project` (يجب أن يكون عاماً). بريد الالتزامات: `287819978+abdalhafadle-source@users.noreply.github.com` (محلي فقط).
 - `.github/workflows/hourly.yml` (كل ساعة: live_decision ← commit output/ state/) · `weekly_retrain.yml` (الجمعة 02:00 بغداد: retrain.py).
 - `retrain.py`: آخر 90 يوماً holdout؛ يعتمد النموذج الجديد فقط إذا AP أعلى. تجربة جافة 2026-10-29: مطر 0.561←0.574، غبار 0.626←0.685 (سيُعتمدان أول تشغيل).
-- `server/app.py` (Render): بلا حالة؛ أمر قديم >60 د ← wait؛ **أمر clean منتهي لا يُرسل أبداً**. `render.yaml` جاهز.
+- `server/app.py` (اختياري للعرض المحلي؛ Render طلب بطاقة دفع فاستُغني عنه). الـ ESP32 يقرأ raw.githubusercontent مباشرة ويفحص valid_until بنفسه عبر NTP.
+- ✅ 2026-10-29 14:43: أول تشغيل لـ hourly على GitHub نجح (51 ث) وكتب أمر 14:00: wait / dust storm (PM10 107، النجف 3 كم).
 - النماذج مضغوطة (RF مطر 2 MB، غبار 4.9 MB). `.gitignore` يستثني data/raw (بغداد)، data/processed، graphify-out، .claude.
 - تنظيف ✅ (بإذن صاحب المشروع): حُذفت 62 نسخة cache قديمة مكررة + سطرا dry-run.
 - كود الـ ESP32: `esp32/pv_cleaner_client/` (يسأل /command كل 14 د، لا يكرر command_id، حد 30 د محلي، WiFi في secrets.h غير منشور). لم يُترجَم/يُجرَّب على جهاز.
 - المتبقي بعد النشر: تقرير الأطروحة النهائي (إنجليزي).
 
 ## 7. أسئلة مفتوحة
-1. اتباع `DEPLOY.md` (صاحب المشروع) ثم إرسال رابط Render للتأكد.
+1. صاحب المشروع: رفع كود الـ ESP32 وتجربته على الجهاز (لم يُترجَم عندنا).
+2. تقرير الأطروحة النهائي (إنجليزي).
 
 ## 8. قرارات اتُّخذت
 - **CSV** للبيانات، **TOON** فقط للملخصات الصغيرة المرسلة لـ Claude.

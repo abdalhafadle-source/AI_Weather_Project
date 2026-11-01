@@ -1,14 +1,15 @@
 // pv_cleaner_client.ino
-// ESP32 side of the Hilla PV-cleaning AI: every 14 min ask the server for the command,
-// and when it says "clean" (with a command_id not run before) switch the brush + pump relays on.
+// ESP32 side of the Hilla PV-cleaning AI: every 14 min read the command that GitHub Actions writes
+// every hour, and when it says "clean" (with a command_id not run before) switch the brush + pump relays on.
 //
 // Board: ESP32 (Arduino core). Library: ArduinoJson v7 (Arduino IDE -> Library Manager).
 // Put your Wi-Fi name/password in secrets.h (copy secrets.example.h). secrets.h is never published.
 //
 // Safety, all enforced here on the ESP32 itself:
 //   - no answer / bad answer / no Wi-Fi  -> do nothing
+//   - clock not synced yet (NTP) or command past valid_until -> do nothing
 //   - same command_id is never run twice (saved in flash, survives a reboot)
-//   - a run never lasts longer than HARD_CAP_MS (30 min), whatever the server says
+//   - a run never lasts longer than HARD_CAP_MS (30 min), whatever the command says
 //   - all relays OFF at boot
 
 #include <WiFi.h>
@@ -16,15 +17,17 @@
 #include <HTTPClient.h>
 #include <Preferences.h>
 #include <ArduinoJson.h>
+#include <time.h>
 #include "secrets.h"  // WIFI_SSID, WIFI_PASS
 
-const char* COMMAND_URL = "https://hilla-pv-cleaner.onrender.com/command";  // your Render address
+const char* COMMAND_URL =
+    "https://raw.githubusercontent.com/abdalhafadle-source/AI_Weather_Project/main/output/command.json";
 
 const int RELAY_BRUSH = 26;  // change to your wiring
 const int RELAY_PUMP = 27;
 const int RELAY_ON = LOW;    // most relay modules switch on LOW; use HIGH if yours is active-high
 
-const unsigned long POLL_MS = 14UL * 60 * 1000;         // < 15 min keeps free Render awake
+const unsigned long POLL_MS = 14UL * 60 * 1000;         // a new command appears once per hour
 const unsigned long CLEAN_CYCLE_MS = 30UL * 60 * 1000;  // your normal cleaning cycle length
 const unsigned long HARD_CAP_MS = 30UL * 60 * 1000;     // absolute maximum run time
 
@@ -35,6 +38,19 @@ bool running = false, polledOnce = false;
 void relays(bool on) {
   digitalWrite(RELAY_BRUSH, on ? RELAY_ON : !RELAY_ON);
   digitalWrite(RELAY_PUMP, on ? RELAY_ON : !RELAY_ON);
+}
+
+// "2026-10-29T15:00:00+03:00" -> seconds since 1970 UTC (days-from-civil); -1 if unreadable
+long long isoToEpoch(const char* s) {
+  int Y, M, D, h, m, sec, oh = 0, om = 0;
+  char sign = 'Z';
+  if (sscanf(s, "%d-%d-%dT%d:%d:%d%c%d:%d", &Y, &M, &D, &h, &m, &sec, &sign, &oh, &om) < 6) return -1;
+  Y -= M <= 2;
+  long era = Y / 400, yoe = Y - era * 400;
+  long doy = (153 * (M + (M > 2 ? -3 : 9)) + 2) / 5 + D - 1;
+  long days = era * 146097 + yoe * 365 + yoe / 4 - yoe / 100 + doy - 719468;
+  long off = (oh * 3600L + om * 60L) * (sign == '-' ? -1 : 1);
+  return days * 86400LL + h * 3600L + m * 60L + sec - off;
 }
 
 bool wifiReady() {
@@ -50,7 +66,7 @@ bool fetchCommand(JsonDocument& doc) {
   client.setInsecure();  // shortcut: HTTPS without certificate check; add the server's root CA to harden
   HTTPClient http;
   http.setConnectTimeout(30000);
-  http.setTimeout(60000);  // free Render can take ~1 min to wake up
+  http.setTimeout(30000);
   if (!http.begin(client, COMMAND_URL)) return false;
   int code = http.GET();
   bool ok = code == 200 && deserializeJson(doc, http.getString()) == DeserializationError::Ok;
@@ -61,7 +77,7 @@ bool fetchCommand(JsonDocument& doc) {
 void poll() {
   JsonDocument doc;
   bool ok = fetchCommand(doc);
-  if (!ok) {  // first request may only wake the server up: try once more
+  if (!ok) {  // one retry for a short network hiccup
     delay(30000);
     ok = fetchCommand(doc);
   }
@@ -75,6 +91,12 @@ void poll() {
   Serial.printf("action=%s id=%s reason=%s\n", action, id, reason);
 
   if (strcmp(action, "clean") != 0 || id[0] == '\0') return;
+  long long until = isoToEpoch(doc["valid_until"] | "");
+  time_t now = time(nullptr);
+  if (now < 1700000000 || until < 0 || (long long)now > until) {  // clock not synced, unreadable, or expired
+    Serial.println("clean command expired or clock not set -> do nothing");
+    return;
+  }
   if (prefs.getString("last_id", "") == id) return;  // this command was already executed
   prefs.putString("last_id", id);                      // save first, so a reboot mid-run never repeats it
 
@@ -96,6 +118,7 @@ void setup() {
   prefs.begin("pvclean", false);
   WiFi.mode(WIFI_STA);
   WiFi.begin(WIFI_SSID, WIFI_PASS);
+  configTime(0, 0, "pool.ntp.org", "time.google.com");  // UTC clock from the internet (free)
 }
 
 void loop() {
