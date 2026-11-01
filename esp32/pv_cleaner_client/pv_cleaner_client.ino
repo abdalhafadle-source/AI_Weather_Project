@@ -1,5 +1,5 @@
 // pv_cleaner_client.ino
-// ESP32 side of the Hilla PV-cleaning AI: every 14 min read the command that GitHub Actions writes
+// ESP32 side of the Hilla PV-cleaning AI: every 14 min read the command that our VPS writes
 // every hour, and when it says "clean" (with a command_id not run before) switch the brush + pump relays on.
 //
 // Board: ESP32 (Arduino core). Library: ArduinoJson v7 (Arduino IDE -> Library Manager).
@@ -21,8 +21,7 @@
 #include <time.h>
 #include "secrets.h"  // WIFI_SSID, WIFI_PASS
 
-const char* COMMAND_URL =
-    "https://raw.githubusercontent.com/abdalhafadle-source/AI_Weather_Project/main/output/command.json";
+const char* COMMAND_URL = "http://64.226.106.240/command";  // our VPS (https:// also works)
 
 const int RELAY_BRUSH = 26;  // change to your wiring
 const int RELAY_PUMP = 27;
@@ -65,8 +64,10 @@ bool wifiReady() {
 
 bool fetchCommand(JsonDocument& doc) {
   if (!wifiReady()) return false;
-  WiFiClientSecure client;
-  client.setInsecure();  // shortcut: HTTPS without certificate check; add the server's root CA to harden
+  WiFiClient plain;
+  WiFiClientSecure tls;
+  tls.setInsecure();  // shortcut: HTTPS without certificate check; add the server's root CA to harden
+  WiFiClient& client = strncmp(COMMAND_URL, "https", 5) == 0 ? static_cast<WiFiClient&>(tls) : plain;
   HTTPClient http;
   http.setConnectTimeout(30000);
   http.setTimeout(30000);

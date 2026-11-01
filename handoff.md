@@ -143,3 +143,10 @@ AI_Weather_Project/
 - **CSV** للبيانات، **TOON** فقط للملخصات الصغيرة المرسلة لـ Claude.
 - مهارتا **ponytail** (أصغر حل كامل) و **graphify** (خريطة المشروع) مفعّلتان دائماً.
 - التخطيط والمراجعة: نموذج كبير (Opus). البناء: نموذج أصغر (Sonnet). المهام البسيطة: Haiku.
+
+### ✅ VPS (2026-11-01) — العقل الوحيد من الآن
+- DigitalOcean، فرانكفورت، Ubuntu 24.04، 1 vCPU / 2 GB + swap 2 GB، IP **64.226.106.240**. دخول بمفتاح فقط (`~/.ssh/hilla_vps` على جهاز صاحب المشروع)، جدار حماية (22/80/443)، تحديثات أمنية تلقائية، توقيت Asia/Baghdad.
+- المستخدم `hilla`: المشروع في `/home/hilla/app` (git clone)، البيئة `/home/hilla/venv`.
+- systemd: `hilla-decide.timer` كل ساعة :05 · `hilla-retrain.timer` الجمعة 02:00 · `hilla-web` (uvicorn 127.0.0.1:8000) خلف Caddy على :80. القفل `flock` يمنع تزامن القرار والتدريب.
+- الـ ESP32 يقرأ `http://64.226.106.240/command`. أول قرار من السيرفر: 16:00 → **clean / after rain** (p_rain 16%، p_dust 6%).
+- المتبقي: إيقاف workflows في GitHub، نطاق مجاني + HTTPS، نسخ احتياطي يومي إلى GitHub، صفحة اللجنة، تقرير الأطروحة.
