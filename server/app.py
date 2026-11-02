@@ -25,7 +25,7 @@ CACHE_S, STALE_MIN = 60, 60
 SAFE = {"action": "wait", "pump": False, "max_duration_min": 30,
         "reason": "no fresh command (safety)", "command_id": None}
 NO_STORE = {"Cache-Control": "no-store"}
-STATS = {"useful_cleans_pct": 78.4, "useful_cleans_rules_pct": 58.7, "fewer_washes_pct": 44, "wasted_less_vs_rule_pct": 27,
+STATS = {"useful_cleans_pct": 78.7, "useful_cleans_rules_pct": 59.0, "fewer_washes_pct": 38, "wasted_less_vs_rule_pct": 27,
          "rain_detect_ai_pct": 71, "rain_detect_forecast_pct": 57, "algorithm": "Random Forest", "features": 58,
          "years_of_data": 4.8, "storms_missed_by_cams_pct": 77}
 _cache = {}
@@ -46,8 +46,22 @@ def fetch_text(url):
     return txt
 
 
+def demo():
+    # a manual test command (deploy/demo_clean.py) wins while it is still valid; it never touches the AI state
+    url = os.environ.get("COMMAND_URL", "")
+    p = Path(url[5:]).with_name("demo_command.json") if url.startswith("file:") else None
+    d = read_json(p) if p and p.exists() else None
+    try:
+        return d if d and datetime.now(timezone.utc) < datetime.fromisoformat(d["valid_until"]) else None
+    except Exception:
+        return None
+
+
 def latest():
     # returns the command dict, or None if it cannot be trusted
+    d = demo()
+    if d:
+        return d
     try:
         cmd = json.loads(fetch_text(os.environ["COMMAND_URL"]))
         until = datetime.fromisoformat(cmd["valid_until"])

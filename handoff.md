@@ -163,3 +163,6 @@ AI_Weather_Project/
   - ⚠️ لا تشغّل live_decision.py محلياً (بدون --at): ملفات output/ و state/ في المستودع صارت نسخة السيرفر.
   - 🧹 حُذف render.yaml، وأُزيلت xgboost من requirements.txt والسيرفر (−430 MB).
   - تجربة retrain --dry-run على السيرفر: 2:53 د، 377 MB RAM، سيُعتمد النموذجان الجمعة (مطر 0.552→0.566، غبار 0.630→0.680).
+- 2026-11-02/03 📄 **التقرير النهائي للأطروحة:** `thesis/Hilla_PV_AI_Report.docx` (+ PDF، 49 صفحة، 21 شكلاً، 36 جدولاً، عربي والمصطلحات إنجليزية مع معناها). يُبنى بـ `python thesis/build_report.py` ثم `thesis/update_and_pdf.ps1` (Word يملأ جدول المحتويات). الرسوم: `thesis/make_figures.py` ← `thesis/figures/`.
+- 🎓 العرض أمام اللجنة: `deploy/demo_start.bat` يرسل أمر «نظّف» تجريبياً (دقيقة، صالح 10 د، `output/demo_command.json`) ثم اضغط RESET على الـ ESP32؛ `demo_stop.bat` لإنهائه. الـ ESP32 يحسبه ضمن حد الغسلتين يومياً.
+- 📶 الجامعة: نقطة اتصال الهاتف باسم `Boss` ونفس كلمة المرور على 2.4 GHz (بلا برمجة).
