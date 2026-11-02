@@ -9,11 +9,19 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600&display=swap" rel="stylesheet">
+<script>try { var t0 = localStorage.getItem("theme"); if (t0) document.documentElement.dataset.theme = t0; } catch (e) {}</script>
 <style>
 :root{--bg:#f5f5f3;--card:#fcfcfb;--line:#e6e5e1;--text:#0b0b0b;--text-2:#52514e;--muted:#8a8984;
 --rain:#2a78d6;--dust:#eb6834;--good:#0ca30c;--warn:#fab219;--idle:#8a8984}
-@media (prefers-color-scheme:dark){:root{--bg:#121211;--card:#1a1a19;--line:#2c2c2a;--text:#f0efec;--text-2:#c3c2b7;
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#121211;--card:#1a1a19;--line:#2c2c2a;--text:#f0efec;--text-2:#c3c2b7;
 --muted:#8f8e88;--rain:#3987e5;--dust:#d95926}}
+:root[data-theme="dark"]{--bg:#121211;--card:#1a1a19;--line:#2c2c2a;--text:#f0efec;--text-2:#c3c2b7;
+--muted:#8f8e88;--rain:#3987e5;--dust:#d95926}
+header{position:relative}
+.tbtn{position:absolute;top:0;inset-inline-end:0;font:inherit;font-size:13px;color:var(--text-2);background:var(--card);
+border:1px solid var(--line);border-radius:999px;padding:6px 12px;cursor:pointer}
+.tbtn:focus-visible{outline:2px solid var(--rain);outline-offset:2px}
+h1{padding-inline-end:130px}
 *{box-sizing:border-box}
 html{-webkit-text-size-adjust:100%}
 body{margin:0;background:var(--bg);color:var(--text);font:400 16px/1.7 "IBM Plex Sans Arabic",system-ui,-apple-system,"Segoe UI",Tahoma,sans-serif;
@@ -100,6 +108,7 @@ border-radius:16px;height:120px;margin-bottom:16px}
 <body>
 <main>
 <header>
+<button id="theme" class="tbtn" type="button" onclick="toggleTheme()"></button>
 <h1>منظّف الألواح الذكي</h1>
 <p class="sub">الحلة · ذكاء اصطناعي يقرر متى تُنظَّف الألواح الشمسية</p>
 <p class="upd" id="upd">&nbsp;</p>
@@ -127,6 +136,19 @@ var WX = [["TS", "عاصفة رعدية"], ["DS", "عاصفة غبار/رمل"],
   ["HZ", "غبار خفيف (ضبابية)"], ["RA", "مطر"], ["BR", "نَدى/ضباب خفيف"], ["FG", "ضباب"]];
 var COMPASS = ["شمال", "شمال شرق", "شرق", "جنوب شرق", "جنوب", "جنوب غرب", "غرب", "شمال غرب"];
 
+function isDark() {
+  var t = document.documentElement.dataset.theme;
+  return t ? t === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+}
+function paintThemeBtn() { document.getElementById("theme").textContent = isDark() ? "☀ الوضع النهاري" : "☾ الوضع الليلي"; }
+function toggleTheme() {
+  var t = isDark() ? "light" : "dark";
+  document.documentElement.dataset.theme = t;
+  try { localStorage.setItem("theme", t); } catch (e) {}
+  paintThemeBtn();
+}
+paintThemeBtn();
+
 function el(tag, cls, text, attrs) {
   var e = document.createElement(tag);
   if (cls) e.className = cls;
@@ -143,7 +165,12 @@ function svg(tag, attrs, text) {
 function add(p) { for (var i = 1; i < arguments.length; i++) if (arguments[i]) p.appendChild(arguments[i]); return p; }
 function card(title) { var c = el("div", "card"); if (title) add(c, el("h2", null, title)); return c; }
 function pct(x) { return Math.round(x * 100); }
-function hhmm(s) { return s ? String(s).slice(11, 16) : "—"; }
+// 12-hour display only (ص = صباحاً، م = مساءً); the data itself stays 24-hour
+function hhmm(s) {
+  if (!s) return "—";
+  var h = +String(s).slice(11, 13), m = String(s).slice(14, 16);
+  return (h % 12 || 12) + ":" + m + " " + (h < 12 ? "ص" : "م");
+}
 function dayhm(s) { return s ? String(s).slice(5, 10).replace("-", "/") + " " + hhmm(s) : "—"; }
 function mins(iso) { return Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 60000)); }
 function ago(m) {
