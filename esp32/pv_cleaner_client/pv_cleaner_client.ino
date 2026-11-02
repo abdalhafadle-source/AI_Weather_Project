@@ -17,7 +17,7 @@
 #include <WiFiClientSecure.h>
 #include <HTTPClient.h>
 #include <Preferences.h>
-#include <ArduinoJson.h>
+#include "ArduinoJson-v7.4.3.h"  // bundled single-file ArduinoJson (MIT): works even if the libraries folder path has non-English letters
 #include <time.h>
 #include "secrets.h"  // WIFI_SSID, WIFI_PASS
 
