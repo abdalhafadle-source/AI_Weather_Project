@@ -20,8 +20,9 @@
 #include "ArduinoJson-v7.4.3.h"  // bundled single-file ArduinoJson (MIT): works even if the libraries folder path has non-English letters
 #include <time.h>
 #include "secrets.h"  // WIFI_SSID, WIFI_PASS
+#include "root_ca.h"  // ROOT_CAS: Let's Encrypt roots, to check the server's identity
 
-const char* COMMAND_URL = "http://64.226.106.240/command";  // our VPS (https:// also works)
+const char* COMMAND_URL = "https://hilla-ai.duckdns.org/command";  // our VPS, encrypted
 
 const int RELAY_BRUSH = 26;  // change to your wiring
 const int RELAY_PUMP = 27;
@@ -64,9 +65,11 @@ bool wifiReady() {
 
 bool fetchCommand(JsonDocument& doc) {
   if (!wifiReady()) return false;
+  // a certificate can only be checked with a correct clock: wait up to 15 s for the internet time (NTP)
+  for (int i = 0; i < 30 && time(nullptr) < 1700000000; i++) delay(500);
   WiFiClient plain;
   WiFiClientSecure tls;
-  tls.setInsecure();  // shortcut: HTTPS without certificate check; add the server's root CA to harden
+  tls.setCACert(ROOT_CAS);  // accept only a server with a valid Let's Encrypt certificate
   WiFiClient& client = strncmp(COMMAND_URL, "https", 5) == 0 ? static_cast<WiFiClient&>(tls) : plain;
   HTTPClient http;
   http.setConnectTimeout(30000);

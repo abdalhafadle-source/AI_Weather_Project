@@ -48,6 +48,6 @@ set COMMAND_URL=https://raw.githubusercontent.com/abdalhafadle-source/AI_Weather
 set LOG_URL=https://raw.githubusercontent.com/abdalhafadle-source/AI_Weather_Project/main/output/decision_log.csv
 cd server && uvicorn app:app --port 8000
 ```
-ثم افتح http://localhost:8000 . (`render.yaml` باقٍ لمن أراد نشره على Render لاحقاً.)
+ثم افتح http://localhost:8000 .
 
 المصدر: Open-Meteo.com (CC BY 4.0)؛ METAR: aviationweather.gov.

@@ -156,3 +156,10 @@ AI_Weather_Project/
 - 2026-11-02: الـ ESP32 مرفوع ويعمل (اتصل بشبكة Boss 2.4 GHz، قرأ الأمر خلال 3.2 ث). الإشارة: الطرفان 26 و27، LOW = تشغيل، 30 دقيقة.
 - 🌐 **صفحة الطقس للجنة** منشورة: http://64.226.106.240 (عربية، للهاتف، فاتح/داكن، تتحدّث كل 5 د). `server/static/index.html` + `/api/status`. `live_decision.py` يكتب أيضاً `output/forecast.json` (توقع ~21 ساعة + الطقس الآن + المطارات). الخادم يسجّل آخر اتصال للـ ESP32 في `output/esp32_seen.json` (بلا عناوين IP).
 - النشر إلى السيرفر الآن بـ scp (ليس git pull، لأن output/ و state/ متتبَّعة وتتغير على السيرفر).
+- 2026-11-02 (فحص شامل + إصلاحات):
+  - 🔒 HTTPS: **https://hilla-ai.duckdns.org** (DuckDNS، Caddy + Let's Encrypt، تجديد تلقائي). العنوان القديم http://64.226.106.240 يُحوَّل تلقائياً إلى HTTPS.
+  - 📡 الـ ESP32 يتصل بـ HTTPS ويتحقق من الشهادة (`root_ca.h`: ISRG Root X1/X2/YE/YR) وينتظر NTP قبل الاتصال.
+  - 💾 نسخ احتياطي يومي 03:50 إلى GitHub (`deploy/backup_to_github.sh`، مفتاح Deploy key يكتب لهذا المستودع فقط، المؤلف hilla-ai-server). ينسخ output/ state/ models/extended/ data/raw_hilla* data/raw_metar reports/retrain_log.csv.
+  - ⚠️ لا تشغّل live_decision.py محلياً (بدون --at): ملفات output/ و state/ في المستودع صارت نسخة السيرفر.
+  - 🧹 حُذف render.yaml، وأُزيلت xgboost من requirements.txt والسيرفر (−430 MB).
+  - تجربة retrain --dry-run على السيرفر: 2:53 د، 377 MB RAM، سيُعتمد النموذجان الجمعة (مطر 0.552→0.566، غبار 0.630→0.680).
