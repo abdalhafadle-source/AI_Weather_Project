@@ -1,1 +1,3 @@
 date,target,current_ap,candidate_ap,promoted,rows_train,holdout_start,current_unseen_holdout
+2026-11-02,rain,0.5517,0.5657,dry-run:True,38291,2026-07-28,True
+2026-11-02,dust,0.6295,0.6802,dry-run:True,38291,2026-07-28,True

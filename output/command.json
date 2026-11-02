@@ -1,23 +1,23 @@
 {
-  "command_id": "2026-11-02T21:00:00+03:00",
-  "generated_at": "2026-11-02T21:05:24+03:00",
-  "valid_until": "2026-11-02T22:00:00+03:00",
-  "action": "clean",
-  "pump": true,
+  "command_id": "2026-11-02T22:00:00+03:00",
+  "generated_at": "2026-11-02T22:05:09+03:00",
+  "valid_until": "2026-11-02T23:00:00+03:00",
+  "action": "idle",
+  "pump": false,
   "max_duration_min": 30,
-  "reason": "after rain",
-  "p_rain": 0.028,
-  "p_dust": 0.012,
+  "reason": "nothing to clean",
+  "p_rain": 0.012,
+  "p_dust": 0.011,
   "thresholds": {
     "rain": 0.275,
     "dust": 0.321
   },
   "now": {
     "rain_mm": 0.0,
-    "pm10": 82.2,
+    "pm10": 81.0,
     "metar_strong_dust": false,
     "metar_haze": false,
-    "metar_min_vis_km": 6.0,
+    "metar_min_vis_km": 5.0,
     "metar_ok": true
   },
   "pending": [],

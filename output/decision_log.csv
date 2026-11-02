@@ -13,4 +13,33 @@ command_id,action,reason,p_rain,p_dust,pm10,metar_strong,metar_haze,metar_min_vi
 2026-10-31T22:00:00+03:00,idle,nothing to clean,0.272,0.096,59.5,False,False,7.0
 2026-11-01T02:00:00+03:00,idle,nothing to clean,0.622,0.198,65.0,False,False,7.0
 2026-11-01T08:00:00+03:00,wait,model: next 6 h not safe,0.419,0.117,55.3,False,False,6.0
-2026-11-02T21:00:00+03:00,clean,after rain,0.028,0.012,82.2,False,False,6.0
+2026-11-01T16:00:00+03:00,clean,after rain,0.164,0.056,65.0,False,False,8.0
+2026-11-01T17:00:00+03:00,idle,nothing to clean,0.175,0.06,63.2,False,False,8.0
+2026-11-01T18:00:00+03:00,idle,nothing to clean,0.173,0.072,58.8,False,False,6.0
+2026-11-01T19:00:00+03:00,idle,nothing to clean,0.166,0.084,55.2,False,False,6.0
+2026-11-01T20:00:00+03:00,idle,nothing to clean,0.315,0.073,55.2,False,False,6.0
+2026-11-01T21:00:00+03:00,idle,nothing to clean,0.138,0.045,59.4,False,False,7.0
+2026-11-01T22:00:00+03:00,idle,nothing to clean,0.132,0.025,60.4,False,False,7.0
+2026-11-01T23:00:00+03:00,idle,nothing to clean,0.173,0.029,58.2,False,False,6.0
+2026-11-02T00:00:00+03:00,idle,nothing to clean,0.19,0.035,57.6,False,False,6.0
+2026-11-02T01:00:00+03:00,idle,nothing to clean,0.212,0.021,53.4,False,False,6.0
+2026-11-02T02:00:00+03:00,idle,nothing to clean,0.216,0.013,51.7,False,False,6.0
+2026-11-02T03:00:00+03:00,idle,nothing to clean,0.037,0.026,52.8,False,False,5.0
+2026-11-02T04:00:00+03:00,idle,nothing to clean,0.04,0.017,56.2,False,False,6.0
+2026-11-02T05:00:00+03:00,idle,nothing to clean,0.087,0.057,60.3,False,False,6.0
+2026-11-02T06:00:00+03:00,idle,nothing to clean,0.088,0.058,61.4,False,False,5.0
+2026-11-02T07:00:00+03:00,idle,dust in air (airport),0.124,0.07,59.6,False,True,4.01
+2026-11-02T08:00:00+03:00,idle,dust in air (airport),0.103,0.065,67.4,False,True,4.01
+2026-11-02T09:00:00+03:00,idle,nothing to clean,0.082,0.054,59.3,False,False,6.0
+2026-11-02T10:00:00+03:00,idle,nothing to clean,0.058,0.05,58.8,False,False,7.0
+2026-11-02T11:00:00+03:00,idle,nothing to clean,0.035,0.053,60.0,False,False,7.0
+2026-11-02T12:00:00+03:00,idle,nothing to clean,0.032,0.019,63.4,False,False,6.0
+2026-11-02T13:00:00+03:00,idle,nothing to clean,0.018,0.021,65.2,False,False,6.0
+2026-11-02T14:00:00+03:00,idle,nothing to clean,0.02,0.015,64.5,False,False,6.0
+2026-11-02T15:00:00+03:00,idle,nothing to clean,0.028,0.013,70.1,False,False,6.0
+2026-11-02T16:00:00+03:00,idle,nothing to clean,0.027,0.016,76.8,False,False,6.0
+2026-11-02T17:00:00+03:00,idle,nothing to clean,0.028,0.021,85.2,False,False,6.0
+2026-11-02T19:00:00+03:00,idle,nothing to clean,0.024,0.033,93.4,False,False,10.0
+2026-11-02T20:00:00+03:00,idle,nothing to clean,0.022,0.015,87.1,False,False,6.0
+2026-11-02T21:00:00+03:00,idle,nothing to clean,0.028,0.012,82.2,False,False,6.0
+2026-11-02T22:00:00+03:00,idle,nothing to clean,0.012,0.011,81.0,False,False,5.0
