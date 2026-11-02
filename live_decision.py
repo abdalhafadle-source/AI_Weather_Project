@@ -41,7 +41,7 @@ import requests
 from decision import HOUR, new_state, step
 from download_data import AIR_URL, AIR_VARS, FORECAST_VARS, fetch
 from download_extra import CENTRE_VARS, FCX_VARS
-from download_metar import to_hourly
+from download_metar import is_dust, to_hourly
 from train_models import build, build_ext
 
 for _s in (sys.stdout, sys.stderr):
@@ -52,6 +52,7 @@ for _s in (sys.stdout, sys.stderr):
 
 FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
 METAR_URL = "https://aviationweather.gov/api/data/metar"
+AIRPORTS = (("ORNI", "مطار النجف", 60), ("ORBI", "مطار بغداد", 90))
 LAT, LON = 32.48, 44.42
 MAX_BACK_H = 48
 MAX_DURATION_MIN = 30
@@ -72,7 +73,7 @@ def get_frame(url, hourly, prefix, model=None):
 
 
 def get_metar(start, end):
-    # returns (hourly frame, ok); on any problem: no dust, visibility 10, available 0
+    # returns (hourly frame, ok, latest report per airport); on any problem: no dust, visibility 10, available 0
     try:
         r = requests.get(METAR_URL, params={"ids": "ORNI,ORBI", "hours": 48, "format": "json"}, timeout=60)
         r.raise_for_status()
@@ -82,10 +83,19 @@ def get_metar(start, end):
                             "valid": pd.to_datetime([x["reportTime"] for x in js], utc=True).tz_localize(None),
                             "vsby": pd.to_numeric([str(x.get("visib")).rstrip("+") for x in js], errors="coerce"),
                             "wxcodes": [x.get("wxString") or pd.NA for x in js]})
-        return to_hourly(rep, start, end), True
+        air = []
+        for st, name, km in AIRPORTS:
+            g = rep[rep["station"] == st].sort_values("valid")
+            if len(g):
+                r = g.iloc[-1]
+                vis = None if pd.isna(r["vsby"]) else round(float(r["vsby"]) * 1.609, 1)
+                wx = "" if pd.isna(r["wxcodes"]) else str(r["wxcodes"])
+                air.append({"station": st, "name_ar": name, "km": km, "time": (r["valid"] + pd.Timedelta(hours=3)).isoformat(),
+                            "vis_km": vis, "wx": wx, "dust": bool(is_dust(wx, 99 if vis is None else vis))})
+        return to_hourly(rep, start, end), True, air
     except Exception as e:
         print(f"METAR failed ({type(e).__name__}: {e}) -> continuing without airport data")
-        return to_hourly(pd.DataFrame({"station": [], "valid": pd.to_datetime([]), "vsby": [], "wxcodes": []}), start, end), False
+        return to_hourly(pd.DataFrame({"station": [], "valid": pd.to_datetime([]), "vsby": [], "wxcodes": []}), start, end), False, []
 
 
 def num(x, nd=3):
@@ -107,19 +117,14 @@ def main() -> int:
     spath = Path(args.state)
 
     # state (a test run never reads or writes it)
-    state, last = new_state(), t - 24 * HOUR
+    state, last, same = new_state(), t - 24 * HOUR, False
     if not args.at and spath.exists():
         js = json.loads(spath.read_text(encoding="utf-8"))
         last = pd.Timestamp(js.pop("last_hour"))
         state = {k: (set(v) if k == "pending" else [datetime.fromisoformat(c) for c in v] if k == "cleans"
                      else datetime.fromisoformat(v) if v and k in ("event_end", "last_end", "pending_since") else v)
                  for k, v in js.items()}
-        if last == t:                                    # already decided this hour: repeat the same command
-            cmd = json.loads((out / "command.json").read_text(encoding="utf-8"))
-            assert cmd["command_id"] == iso(t), "state is at this hour but command.json is for another hour"
-            print("already decided for this hour - same command:")
-            print(json.dumps(cmd, indent=2, ensure_ascii=False))
-            return 0
+        same = last == t                                 # already decided this hour: repeat the same command
 
     # data
     df = get_frame(FORECAST_URL, FORECAST_VARS, "fc_", "best_match")
@@ -127,7 +132,7 @@ def main() -> int:
                                   ("ukmo_", "ukmo_seamless", CENTRE_VARS), ("jma_", "jma_seamless", CENTRE_VARS)):
         df = df.merge(get_frame(FORECAST_URL, hourly, prefix, model), on="time", how="left")
     df = df.merge(get_frame(AIR_URL, AIR_VARS, "aq_"), on="time", how="left")
-    met, metar_ok = get_metar(df["time"].min().date(), df["time"].max().date())
+    met, metar_ok, airports = get_metar(df["time"].min().date(), df["time"].max().date())
     df = df.merge(met.rename(columns={c: "metar_" + c for c in met.columns if c != "time"}), on="time", how="left")
     df = df.sort_values("time").reset_index(drop=True)
     assert df["time"].is_unique and (df["time"].diff().dropna() == HOUR).all(), "gaps in hourly time"
@@ -146,6 +151,28 @@ def main() -> int:
     p_dust[ok] = md["model"].predict_proba(X.loc[ok, md["features"]])[:, 1]
     th_r, th_d = mr["threshold"], md["threshold"]
 
+    # forecast for the web page (does not touch the decision state)
+    i = df.index[df["time"] == t][0]
+    hrs = df[(df["time"] >= t) & (df["time"] <= t + 30 * HOUR) & ok]
+    r1 = lambda c, k: num(df[c][k], 1)
+    fc = {"generated_at": iso(now.floor("s")), "thresholds": {"rain": num(th_r), "dust": num(th_d)},
+          "hours": [{"time": df["time"][k].strftime("%Y-%m-%dT%H:%M"), "p_rain": num(p_rain[k]), "p_dust": num(p_dust[k]),
+                     "temp": r1("fc_temperature_2m", k), "rain_mm": r1("fc_precipitation", k), "wind": r1("fc_wind_speed_10m", k),
+                     "gust": r1("fc_wind_gusts_10m", k), "pm10": r1("aq_pm10", k)} for k in hrs.index],
+          "now": {"temp": r1("fc_temperature_2m", i), "humidity": r1("fc_relative_humidity_2m", i),
+                  "wind": r1("fc_wind_speed_10m", i), "gust": r1("fc_wind_gusts_10m", i),
+                  "wind_dir": r1("fc_wind_direction_10m", i), "cloud": r1("fc_cloud_cover", i), "pm10": r1("aq_pm10", i),
+                  "dust": r1("aq_dust", i), "weather_code": r1("fcx_weather_code", i)},
+          "airports": airports}
+    (out / "forecast.json").write_text(json.dumps(fc, indent=2, ensure_ascii=False), encoding="utf-8")
+
+    if same:
+        cmd = json.loads((out / "command.json").read_text(encoding="utf-8"))
+        assert cmd["command_id"] == iso(t), "state is at this hour but command.json is for another hour"
+        print("already decided for this hour - same command (forecast.json refreshed):")
+        print(json.dumps(cmd, indent=2, ensure_ascii=False))
+        return 0
+
     # airport inputs exactly as in simulate_decisions
     strong = df["metar_strong_dust"].fillna(0) == 1
     dust_ob = strong & strong.shift(1, fill_value=False)
@@ -162,7 +189,6 @@ def main() -> int:
         safe = bool(ok[i] and p_rain[i] < th_r and p_dust[i] < th_d)
         action, reason = step(state, h.to_pydatetime(), 0 if pd.isna(rain) else rain, 0 if pd.isna(pm) else pm, safe,
                               dust_obs=bool(dust_ob[i]), haze=bool(haze_ob[i]), can_clean=h == t)
-    i = df.index[df["time"] == t][0]
 
     cmd = {"command_id": iso(t), "generated_at": iso(now.floor("s")), "valid_until": iso(t + HOUR),
            "action": action, "pump": action == "clean", "max_duration_min": MAX_DURATION_MIN, "reason": reason,
