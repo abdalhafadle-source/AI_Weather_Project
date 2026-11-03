@@ -9,7 +9,9 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600&display=swap" rel="stylesheet">
-<script>try { var t0 = localStorage.getItem("theme"); if (t0) document.documentElement.dataset.theme = t0; } catch (e) {}</script>
+<script>try { var t0 = localStorage.getItem("theme"); if (t0) document.documentElement.dataset.theme = t0;
+  var q0 = location.search.match(/lang=(en|ar)/); if (q0) localStorage.setItem("lang", q0[1]);  // shareable ?lang=en link
+  if (localStorage.getItem("lang") === "en") { document.documentElement.lang = "en"; document.documentElement.dir = "ltr"; } } catch (e) {}</script>
 <style>
 :root{--bg:#f5f5f3;--card:#fcfcfb;--line:#e6e5e1;--text:#0b0b0b;--text-2:#52514e;--muted:#8a8984;
 --rain:#2a78d6;--dust:#eb6834;--good:#0ca30c;--warn:#fab219;--idle:#8a8984}
@@ -17,11 +19,10 @@
 --muted:#8f8e88;--rain:#3987e5;--dust:#d95926}}
 :root[data-theme="dark"]{--bg:#121211;--card:#1a1a19;--line:#2c2c2a;--text:#f0efec;--text-2:#c3c2b7;
 --muted:#8f8e88;--rain:#3987e5;--dust:#d95926}
-header{position:relative}
-.tbtn{position:absolute;top:0;inset-inline-end:0;font:inherit;font-size:13px;color:var(--text-2);background:var(--card);
+.tools{display:flex;gap:8px;justify-content:flex-end;margin-bottom:10px}
+.tbtn{font:inherit;font-size:13px;color:var(--text-2);background:var(--card);margin:0;
 border:1px solid var(--line);border-radius:999px;padding:6px 12px;cursor:pointer}
 .tbtn:focus-visible{outline:2px solid var(--rain);outline-offset:2px}
-h1{padding-inline-end:130px}
 *{box-sizing:border-box}
 html{-webkit-text-size-adjust:100%}
 body{margin:0;background:var(--bg);color:var(--text);font:400 16px/1.7 "IBM Plex Sans Arabic",system-ui,-apple-system,"Segoe UI",Tahoma,sans-serif;
@@ -63,6 +64,7 @@ svg{display:block;width:100%;height:auto;touch-action:pan-y}
 svg text{fill:var(--muted);font-size:10px;font-family:inherit}
 .tip{position:absolute;top:0;pointer-events:none;background:var(--card);border:1px solid var(--line);border-radius:10px;
 padding:6px 10px;font-size:12px;line-height:1.6;direction:rtl;white-space:nowrap;display:none}
+:root[dir="ltr"] .tip{direction:ltr}
 details{margin-top:12px}
 summary{cursor:pointer;color:var(--text-2);font-size:14px}
 .tw{overflow-x:auto}
@@ -108,9 +110,12 @@ border-radius:16px;height:120px;margin-bottom:16px}
 <body>
 <main>
 <header>
+<div class="tools">
+<button id="lang" class="tbtn" type="button" onclick="toggleLang()"></button>
 <button id="theme" class="tbtn" type="button" onclick="toggleTheme()"></button>
-<h1>منظّف الألواح الذكي</h1>
-<p class="sub">الحلة · ذكاء اصطناعي يقرر متى تُنظَّف الألواح الشمسية</p>
+</div>
+<h1 id="h1">منظّف الألواح الذكي</h1>
+<p class="sub" id="sub">الحلة · ذكاء اصطناعي يقرر متى تُنظَّف الألواح الشمسية</p>
 <p class="upd" id="upd">&nbsp;</p>
 </header>
 <div id="err" class="card err" hidden>تعذّر الاتصال بالخادم — ستُعاد المحاولة</div>
@@ -118,36 +123,60 @@ border-radius:16px;height:120px;margin-bottom:16px}
 <div id="app" hidden></div>
 <footer>
 <p>مشروع تخرج: Design and Field Implementation of a Low-Cost, AI-Powered IoT Mechanical PV Module Cleaning System</p>
-<p>مصادر البيانات: Open-Meteo.com (CC BY 4.0) · تقارير المطارات METAR (aviationweather.gov)</p>
+<p id="src">مصادر البيانات: Open-Meteo.com (CC BY 4.0) · تقارير المطارات METAR (aviationweather.gov)</p>
 </footer>
 </main>
 <script>
 "use strict";
 var NS = "http://www.w3.org/2000/svg";
-var ST = {clean: ["نظّف الآن", "✓", "s-clean", "var(--good)"], wait: ["انتظر", "⏸", "s-wait", "var(--warn)"],
-          idle: ["لا حاجة للتنظيف", "○", "s-idle", "var(--idle)"]};
-var REASONS = [["after dust+rain", "انتهى المطر والغبار والأجواء القادمة آمنة"], ["after rain", "انتهى المطر والأجواء القادمة آمنة"],
-  ["after dust", "انتهت عاصفة الغبار والأجواء القادمة آمنة"], ["raining", "تمطر الآن"], ["dust storm", "عاصفة غبار جارية"],
-  ["dust in air", "غبار عالق في الجو (حسب تقارير المطارات)"], ["model: next 6 h not safe", "الذكاء الاصطناعي يتوقع مطراً أو غباراً خلال 6 ساعات"],
-  ["waiting", "انتظار بعد انتهاء الحدث حتى يهدأ الجو"], ["daily cap", "بلغنا حد غسلتين في اليوم"],
-  ["min gap", "لم تمر 6 ساعات على آخر غسلة"], ["nothing to clean", "لم يحدث مطر أو غبار يستدعي التنظيف"],
-  ["no fresh command", "لا يوجد أمر حديث — وضع الأمان"], ["demo", "تجربة يدوية للعرض أمام اللجنة (دقيقة واحدة)"]];
-var WX = [["TS", "عاصفة رعدية"], ["DS", "عاصفة غبار/رمل"], ["SS", "عاصفة غبار/رمل"], ["BLDU", "غبار"], ["DU", "غبار"], ["SA", "رمل"],
-  ["HZ", "غبار خفيف (ضبابية)"], ["RA", "مطر"], ["BR", "نَدى/ضباب خفيف"], ["FG", "ضباب"]];
-var COMPASS = ["شمال", "شمال شرق", "شرق", "جنوب شرق", "جنوب", "جنوب غرب", "غرب", "شمال غرب"];
+// language: read once; the button saves the choice and reloads the page
+var LANG = document.documentElement.lang === "en" ? "en" : "ar";
+function T(ar, en) { return LANG === "en" ? en : ar; }
+var ST = {clean: [T("نظّف الآن", "Clean now"), "✓", "s-clean", "var(--good)"], wait: [T("انتظر", "Wait"), "⏸", "s-wait", "var(--warn)"],
+          idle: [T("لا حاجة للتنظيف", "No cleaning needed"), "○", "s-idle", "var(--idle)"]};
+var REASONS = [["after dust+rain", T("انتهى المطر والغبار والأجواء القادمة آمنة", "Rain and dust are over and the coming hours are safe")],
+  ["after rain", T("انتهى المطر والأجواء القادمة آمنة", "Rain is over and the coming hours are safe")],
+  ["after dust", T("انتهت عاصفة الغبار والأجواء القادمة آمنة", "The dust storm is over and the coming hours are safe")],
+  ["raining", T("تمطر الآن", "It is raining now")], ["dust storm", T("عاصفة غبار جارية", "Dust storm in progress")],
+  ["dust in air", T("غبار عالق في الجو (حسب تقارير المطارات)", "Dust in the air (airport reports)")],
+  ["model: next 6 h not safe", T("الذكاء الاصطناعي يتوقع مطراً أو غباراً خلال 6 ساعات", "The AI expects rain or dust within 6 hours")],
+  ["waiting", T("انتظار بعد انتهاء الحدث حتى يهدأ الجو", "Waiting after the event for the weather to settle")],
+  ["daily cap", T("بلغنا حد غسلتين في اليوم", "Daily limit of two washes reached")],
+  ["min gap", T("لم تمر 6 ساعات على آخر غسلة", "Less than 6 hours since the last wash")],
+  ["nothing to clean", T("لم يحدث مطر أو غبار يستدعي التنظيف", "No rain or dust that needs cleaning")],
+  ["no fresh command", T("لا يوجد أمر حديث — وضع الأمان", "No fresh command — safe mode")],
+  ["demo", T("تجربة يدوية للعرض أمام اللجنة (دقيقة واحدة)", "Manual demo for the committee (one minute)")]];
+var WX = [["TS", T("عاصفة رعدية", "Thunderstorm")], ["DS", T("عاصفة غبار/رمل", "Dust/sand storm")], ["SS", T("عاصفة غبار/رمل", "Dust/sand storm")],
+  ["BLDU", T("غبار", "Dust")], ["DU", T("غبار", "Dust")], ["SA", T("رمل", "Sand")], ["HZ", T("غبار خفيف (ضبابية)", "Haze")],
+  ["RA", T("مطر", "Rain")], ["BR", T("نَدى/ضباب خفيف", "Mist")], ["FG", T("ضباب", "Fog")]];
+var COMPASS = LANG === "en" ? ["N", "NE", "E", "SE", "S", "SW", "W", "NW"]
+  : ["شمال", "شمال شرق", "شرق", "جنوب شرق", "جنوب", "جنوب غرب", "غرب", "شمال غرب"];
+var AIRPORT_EN = {ORNI: "Najaf Airport", ORBI: "Baghdad Airport"};
 
 function isDark() {
   var t = document.documentElement.dataset.theme;
   return t ? t === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
 }
-function paintThemeBtn() { document.getElementById("theme").textContent = isDark() ? "☀ الوضع النهاري" : "☾ الوضع الليلي"; }
+function paintThemeBtn() { document.getElementById("theme").textContent = isDark() ? T("☀ الوضع النهاري", "☀ Light mode") : T("☾ الوضع الليلي", "☾ Dark mode"); }
 function toggleTheme() {
   var t = isDark() ? "light" : "dark";
   document.documentElement.dataset.theme = t;
   try { localStorage.setItem("theme", t); } catch (e) {}
   paintThemeBtn();
 }
+function toggleLang() {
+  try { localStorage.setItem("lang", LANG === "en" ? "ar" : "en"); } catch (e) {}
+  location.reload();
+}
 paintThemeBtn();
+document.getElementById("lang").textContent = LANG === "en" ? "العربية" : "English";
+if (LANG === "en") {
+  document.title = "Smart PV Cleaner — Hilla";
+  document.getElementById("h1").textContent = "Smart PV Panel Cleaner";
+  document.getElementById("sub").textContent = "Hilla, Iraq · AI decides when to clean the solar panels";
+  document.getElementById("err").textContent = "Cannot reach the server — retrying";
+  document.getElementById("src").textContent = "Data: Open-Meteo.com (CC BY 4.0) · Airport METAR reports (aviationweather.gov)";
+}
 
 function el(tag, cls, text, attrs) {
   var e = document.createElement(tag);
@@ -169,29 +198,32 @@ function pct(x) { return Math.round(x * 100); }
 function hhmm(s) {
   if (!s) return "—";
   var h = +String(s).slice(11, 13), m = String(s).slice(14, 16);
-  return (h % 12 || 12) + ":" + m + " " + (h < 12 ? "ص" : "م");
+  return (h % 12 || 12) + ":" + m + " " + (h < 12 ? T("ص", "AM") : T("م", "PM"));
 }
 function dayhm(s) { return s ? String(s).slice(5, 10).replace("-", "/") + " " + hhmm(s) : "—"; }
 function mins(iso) { return Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 60000)); }
 function ago(m) {
-  if (m < 1) return "أقل من دقيقة";
-  if (m < 60) return m + " دقيقة";
-  if (m < 1440) return Math.floor(m / 60) + " ساعة";
-  return Math.floor(m / 1440) + " يوم";
+  if (m < 1) return T("أقل من دقيقة", "less than a minute");
+  if (m < 60) return m + T(" دقيقة", " min");
+  if (m < 1440) return Math.floor(m / 60) + T(" ساعة", " h");
+  return Math.floor(m / 1440) + T(" يوم", " d");
 }
 function reasonAr(r) {
   r = String(r || "");
   var out = r, hit = false;
   for (var i = 0; i < REASONS.length; i++) if (r.indexOf(REASONS[i][0]) === 0 || r.indexOf(REASONS[i][0]) >= 0) { out = REASONS[i][1]; hit = true; break; }
-  if (hit && r.indexOf("(max wait 48 h)") >= 0) out += " (بعد انتظار 48 ساعة)";
+  if (hit && r.indexOf("(max wait 48 h)") >= 0) out += T(" (بعد انتظار 48 ساعة)", " (after the 48 h maximum wait)");
   return out;
 }
 function wxAr(wx) {
-  if (!wx) return "صافٍ";
+  if (!wx) return T("صافٍ", "Clear");
   for (var i = 0; i < WX.length; i++) if (wx.indexOf(WX[i][0]) >= 0) return WX[i][1];
   return wx;
 }
-function pmWord(v) { return v == null ? "—" : v < 50 ? "هواء نظيف" : v < 150 ? "غبار خفيف" : v < 200 ? "مغبر" : "عاصفة غبار"; }
+function pmWord(v) {
+  return v == null ? "—" : v < 50 ? T("هواء نظيف", "Clean air") : v < 150 ? T("غبار خفيف", "Light dust")
+    : v < 200 ? T("مغبر", "Dusty") : T("عاصفة غبار", "Dust storm");
+}
 function status(a) { return ST[a] || ST.wait; }
 function badge(a) {
   var s = status(a), w = el("span", "st " + s[2]);
@@ -205,16 +237,17 @@ function hero(d) {
   var c = card(); c.className = "card hero";
   var lab = el("div", "lab " + s[2]);
   add(lab, el("span", "ic", s[1]), el("span", "t", s[0]));
-  add(c, lab, el("p", "why", safe ? "لا يوجد أمر حديث — وضع الأمان" : reasonAr(cmd.reason)));
-  if (!safe) add(c, el("p", "until", "صالح حتى " + hhmm(cmd.valid_until)));
+  add(c, lab, el("p", "why", safe ? T("لا يوجد أمر حديث — وضع الأمان", "No fresh command — safe mode") : reasonAr(cmd.reason)));
+  if (!safe) add(c, el("p", "until", T("صالح حتى ", "Valid until ") + hhmm(cmd.valid_until)));
   return c;
 }
 
 /* 3. model opinion */
 function opinion(d) {
-  var f = d.forecast, cmd = d.command, c = card("رأي الذكاء الاصطناعي الآن");
+  var f = d.forecast, cmd = d.command, c = card(T("رأي الذكاء الاصطناعي الآن", "What the AI thinks now"));
   var th = (f && f.thresholds) || cmd.thresholds || {rain: 0.27, dust: 0.32};
-  [["احتمال المطر خلال 6 ساعات", cmd.p_rain, th.rain, "--rain"], ["احتمال الغبار خلال 6 ساعات", cmd.p_dust, th.dust, "--dust"]].forEach(function (r) {
+  [[T("احتمال المطر خلال 6 ساعات", "Chance of rain within 6 hours"), cmd.p_rain, th.rain, "--rain"],
+   [T("احتمال الغبار خلال 6 ساعات", "Chance of dust within 6 hours"), cmd.p_dust, th.dust, "--dust"]].forEach(function (r) {
     var row = el("div", "row"), h = el("div", "rh"), sw = el("span", "sw");
     sw.style.background = "var(" + r[3] + ")";
     var lb = el("b"); add(lb, sw, document.createTextNode(r[0]));
@@ -224,29 +257,30 @@ function opinion(d) {
     fill.style.background = "var(" + r[3] + ")";
     var tick = el("u"); tick.style.insetInlineStart = Math.min(99, r[2] * 100) + "%";
     add(bar, fill, tick);
-    add(row, h, bar, el("div", "small", "حدّ الإنذار " + Math.floor(r[2] * 100) + "%"));
+    add(row, h, bar, el("div", "small", T("حدّ الإنذار ", "Alert threshold ") + Math.floor(r[2] * 100) + "%"));
     add(c, row);
   });
-  add(c, el("p", "note", "إذا تجاوز الاحتمال حدّ الإنذار لا يُرسل أمر التنظيف."));
+  add(c, el("p", "note", T("إذا تجاوز الاحتمال حدّ الإنذار لا يُرسل أمر التنظيف.", "If a chance is above its threshold, no cleaning command is sent.")));
   return c;
 }
 
 /* 4. chart */
 function chart(f) {
-  var c = card("توقعات الساعات القادمة");
+  var c = card(T("توقعات الساعات القادمة", "Forecast for the coming hours"));
   var H = f && f.hours;
-  if (!H || H.length < 2) { add(c, el("p", "note", "لا تتوفر توقعات حالياً.")); return c; }
+  if (!H || H.length < 2) { add(c, el("p", "note", T("لا تتوفر توقعات حالياً.", "No forecast available right now."))); return c; }
   var lg = el("div", "legend");
-  [["المطر", "--rain"], ["الغبار", "--dust"]].forEach(function (x) {
+  [[T("المطر", "Rain"), "--rain"], [T("الغبار", "Dust"), "--dust"]].forEach(function (x) {
     var s = el("span"), sw = el("span", "sw"); sw.style.background = "var(" + x[1] + ")";
     add(s, sw, document.createTextNode(x[0])); add(lg, s);
   });
   add(c, lg);
-  var W = 340, HT = 180, L = 30, R = 44, T = 10, B = 24, n = H.length;
+  var W = 340, HT = 180, L = 30, R = 44, T0 = 10, B = 24, n = H.length;
   var X = function (i) { return L + (W - L - R) * i / (n - 1); };
-  var Y = function (p) { return T + (HT - T - B) * (1 - p); };
+  var Y = function (p) { return T0 + (HT - T0 - B) * (1 - p); };
   var box = el("div", "chartbox");
-  var g = svg("svg", {viewBox: "0 0 " + W + " " + HT, role: "img", "aria-label": "رسم احتمال المطر والغبار للساعات القادمة"});
+  var g = svg("svg", {viewBox: "0 0 " + W + " " + HT, role: "img",
+                      "aria-label": T("رسم احتمال المطر والغبار للساعات القادمة", "Chart of rain and dust chances for the coming hours")});
   [0, 0.5, 1].forEach(function (v) {
     add(g, svg("line", {x1: L, x2: W - R, y1: Y(v), y2: Y(v), stroke: "var(--line)", "stroke-width": 1}),
         svg("text", {x: L - 5, y: Y(v) + 3, "text-anchor": "end"}, pct(v) + "%"));
@@ -254,7 +288,7 @@ function chart(f) {
   H.forEach(function (h, i) {
     if (h.time.slice(11, 13) % 6 === 0) add(g, svg("text", {x: X(i), y: HT - 6, "text-anchor": "middle"}, hhmm(h.time)));
   });
-  var th = f.thresholds || {}, ser = [["p_rain", "--rain", th.rain, "المطر"], ["p_dust", "--dust", th.dust, "الغبار"]];
+  var th = f.thresholds || {}, ser = [["p_rain", "--rain", th.rain, T("المطر", "Rain")], ["p_dust", "--dust", th.dust, T("الغبار", "Dust")]];
   ser.forEach(function (s) {
     if (s[2] != null) add(g, svg("line", {x1: L, x2: W - R, y1: Y(s[2]), y2: Y(s[2]), stroke: "var(" + s[1] + ")", "stroke-width": 1,
                                          "stroke-dasharray": "4 3", opacity: 0.4}));
@@ -270,7 +304,7 @@ function chart(f) {
     add(g, svg("circle", {cx: W - R + 8, cy: ends[k] - 1, r: 3, fill: "var(" + s[1] + ")"}),
         svg("text", {x: W - R + 14, y: ends[k] + 3, "text-anchor": "start"}, s[3]));
   });
-  var cross = svg("line", {y1: T, y2: HT - B, stroke: "var(--muted)", "stroke-width": 1, visibility: "hidden"});
+  var cross = svg("line", {y1: T0, y2: HT - B, stroke: "var(--muted)", "stroke-width": 1, visibility: "hidden"});
   var dots = ser.map(function (s) { var d = svg("circle", {r: 4, fill: "var(" + s[1] + ")", visibility: "hidden"}); add(g, d); return d; });
   g.insertBefore(cross, g.firstChild.nextSibling);
   var tip = el("div", "tip");
@@ -281,7 +315,7 @@ function chart(f) {
     cross.setAttribute("x1", x); cross.setAttribute("x2", x); cross.setAttribute("visibility", "visible");
     ser.forEach(function (s, k) { dots[k].setAttribute("cx", x); dots[k].setAttribute("cy", Y(h[s[0]])); dots[k].setAttribute("visibility", "visible"); });
     tip.textContent = ""; tip.style.display = "block";
-    add(tip, el("div", null, hhmm(h.time)), el("div", null, "المطر " + pct(h.p_rain) + "%"), el("div", null, "الغبار " + pct(h.p_dust) + "%"));
+    add(tip, el("div", null, hhmm(h.time)), el("div", null, T("المطر ", "Rain ") + pct(h.p_rain) + "%"), el("div", null, T("الغبار ", "Dust ") + pct(h.p_dust) + "%"));
     var left = x / W * r.width, tw = tip.offsetWidth;
     tip.style.left = Math.max(0, Math.min(r.width - tw, left - tw / 2)) + "px";
   }
@@ -293,13 +327,16 @@ function chart(f) {
   var parts = [];
   ser.forEach(function (s, k) {
     var best = H.reduce(function (a, h) { return h[s[0]] > a[s[0]] ? h : a; }, H[0]);
-    if (s[2] != null && best[s[0]] >= s[2]) parts.push("أعلى احتمال " + (k ? "غبار " : "مطر ") + pct(best[s[0]]) + "% الساعة " + hhmm(best.time));
+    if (s[2] != null && best[s[0]] >= s[2])
+      parts.push(T("أعلى احتمال " + (k ? "غبار " : "مطر ") + pct(best[s[0]]) + "% الساعة " + hhmm(best.time),
+                   "Highest " + (k ? "dust" : "rain") + " chance " + pct(best[s[0]]) + "% at " + hhmm(best.time)));
   });
-  add(c, el("p", "note", parts.length ? parts.join("، ") : "لا يُتوقع مطر أو غبار مؤثر خلال الساعات القادمة"));
+  add(c, el("p", "note", parts.length ? parts.join(T("، ", "; ")) : T("لا يُتوقع مطر أو غبار مؤثر خلال الساعات القادمة", "No significant rain or dust expected in the coming hours")));
   // table
   var dt = el("details"), tw = el("div", "tw"), tb = el("table"), hr = el("tr");
-  add(dt, el("summary", null, "عرض الأرقام"));
-  ["الوقت", "مطر %", "غبار %", "حرارة °م", "رياح كم/س"].forEach(function (t) { add(hr, el("th", null, t)); });
+  add(dt, el("summary", null, T("عرض الأرقام", "Show the numbers")));
+  (LANG === "en" ? ["Time", "Rain %", "Dust %", "Temp °C", "Wind km/h"] : ["الوقت", "مطر %", "غبار %", "حرارة °م", "رياح كم/س"])
+    .forEach(function (t) { add(hr, el("th", null, t)); });
   add(tb, hr);
   H.forEach(function (h) {
     var r = el("tr");
@@ -312,12 +349,14 @@ function chart(f) {
 
 /* 5. weather now */
 function weather(f) {
-  var c = card("الطقس الآن في الحلة"), n = f && f.now;
-  if (!n) { add(c, el("p", "note", "لا تتوفر بيانات الطقس حالياً.")); return c; }
+  var c = card(T("الطقس الآن في الحلة", "Weather now in Hilla")), n = f && f.now;
+  if (!n) { add(c, el("p", "note", T("لا تتوفر بيانات الطقس حالياً.", "No weather data right now."))); return c; }
   var v = function (x) { return x == null ? "—" : String(x); };
   var dir = n.wind_dir == null ? "" : COMPASS[Math.round(n.wind_dir / 45) % 8];
-  var tiles = [["الحرارة", v(n.temp), "°C", ""], ["الرطوبة", v(n.humidity), "%", ""], ["الرياح", v(n.wind), "كم/س", dir],
-               ["الهبّات", v(n.gust), "كم/س", ""], ["الغيوم", v(n.cloud), "%", ""], ["الغبار PM10", v(n.pm10), "", pmWord(n.pm10)]];
+  var kmh = T("كم/س", "km/h");
+  var tiles = [[T("الحرارة", "Temperature"), v(n.temp), "°C", ""], [T("الرطوبة", "Humidity"), v(n.humidity), "%", ""],
+               [T("الرياح", "Wind"), v(n.wind), kmh, dir], [T("الهبّات", "Gusts"), v(n.gust), kmh, ""],
+               [T("الغيوم", "Clouds"), v(n.cloud), "%", ""], [T("الغبار PM10", "Dust PM10"), v(n.pm10), "", pmWord(n.pm10)]];
   var g = el("div", "grid");
   tiles.forEach(function (t) {
     var d = el("div", "tile"), nn = el("div", "n", t[1] + " ");
@@ -331,24 +370,24 @@ function weather(f) {
 
 /* 6. airports */
 function airports(f) {
-  var c = card("عيون المطارات"), A = (f && f.airports) || [];
-  if (!A.length) add(c, el("p", "note", "تقارير المطارات غير متاحة حالياً."));
+  var c = card(T("عيون المطارات", "Airport eyes")), A = (f && f.airports) || [];
+  if (!A.length) add(c, el("p", "note", T("تقارير المطارات غير متاحة حالياً.", "Airport reports are not available right now.")));
   A.forEach(function (a) {
     var d = el("div", "ap"), l1 = el("div", "l1");
-    add(l1, el("b", null, a.name_ar + " · " + a.km + " كم"), el("span", "small", hhmm(a.time)));
+    add(l1, el("b", null, T(a.name_ar, AIRPORT_EN[a.station] || a.station) + " · " + a.km + T(" كم", " km")), el("span", "small", hhmm(a.time)));
     var word = wxAr(a.wx);
-    add(d, l1, el("div", "l2", "الرؤية " + (a.vis_km == null ? "—" : a.vis_km + " كم") + " · " + word + (a.dust ? " (غبار)" : "")));
+    add(d, l1, el("div", "l2", T("الرؤية ", "Visibility ") + (a.vis_km == null ? "—" : a.vis_km + T(" كم", " km")) + " · " + word + (a.dust ? T(" (غبار)", " (dust)") : "")));
     add(c, d);
   });
-  add(c, el("p", "small", "المطارات أقرب محطات رصد رسمية للحلة."));
+  add(c, el("p", "small", T("المطارات أقرب محطات رصد رسمية للحلة.", "The airports are the closest official weather stations to Hilla.")));
   return c;
 }
 
 /* 7. log */
 function logcard(d) {
-  var c = card("سجل القرارات"), rows = (d.log || []).slice(-24).reverse();
-  add(c, el("p", null, d.last_clean ? "آخر غسلة: " + dayhm(d.last_clean) : "لم تحدث غسلة بعد"));
-  if (!rows.length) return add(c, el("p", "note", "لا توجد قرارات مسجلة بعد."));
+  var c = card(T("سجل القرارات", "Decision log")), rows = (d.log || []).slice(-24).reverse();
+  add(c, el("p", null, d.last_clean ? T("آخر غسلة: ", "Last wash: ") + dayhm(d.last_clean) : T("لم تحدث غسلة بعد", "No wash yet")));
+  if (!rows.length) return add(c, el("p", "note", T("لا توجد قرارات مسجلة بعد.", "No decisions logged yet.")));
   var ul = el("ul", "log");
   rows.forEach(function (r, i) {
     var li = el("li"); li.dataset.i = i;
@@ -358,11 +397,11 @@ function logcard(d) {
   });
   add(c, ul);
   if (rows.length > 6) {
-    var open = false, b = el("button", null, "عرض الكل", {type: "button"});
+    var open = false, b = el("button", null, T("عرض الكل", "Show all"), {type: "button"});
     b.onclick = function () {
       open = !open;
       Array.prototype.forEach.call(ul.children, function (li) { li.hidden = !open && li.dataset.i >= 6; });
-      b.textContent = open ? "عرض أقل" : "عرض الكل";
+      b.textContent = open ? T("عرض أقل", "Show less") : T("عرض الكل", "Show all");
     };
     add(c, b);
   }
@@ -371,35 +410,46 @@ function logcard(d) {
 
 /* 8. ESP32 */
 function device(d) {
-  var c = card("حالة جهاز التنظيف (ESP32)"), e = d.esp32, row = el("div", "dev"), dot = el("span", "dot"), t;
+  var c = card(T("حالة جهاز التنظيف (ESP32)", "Cleaning device status (ESP32)")), e = d.esp32, row = el("div", "dev"), dot = el("span", "dot"), t;
   if (e && e.last_seen) {
     var m = mins(e.last_seen);
-    if (m <= 30) { dot.style.background = "var(--good)"; t = "متصل ✓ — آخر اتصال قبل " + ago(m); }
-    else { dot.style.background = "var(--warn)"; t = "غير متصل منذ " + ago(m); }
-  } else t = "لم يتصل بعد";
+    if (m <= 30) { dot.style.background = "var(--good)"; t = T("متصل ✓ — آخر اتصال قبل " + ago(m), "Connected ✓ — last seen " + ago(m) + " ago"); }
+    else { dot.style.background = "var(--warn)"; t = T("غير متصل منذ " + ago(m), "Offline for " + ago(m)); }
+  } else t = T("لم يتصل بعد", "Not connected yet");
   add(row, dot, el("span", null, t));
-  add(c, row, el("p", "note", "يسأل الجهاز الخادم كل 14 دقيقة."));
+  add(c, row, el("p", "note", T("يسأل الجهاز الخادم كل 14 دقيقة.", "The device asks the server every 14 minutes.")));
   return c;
 }
 
 /* 9. how it works */
 function how(s) {
-  var c = card("كيف يعمل النظام؟"), ol = el("ol", "steps");
-  ["يجمع كل ساعة توقعات 4 مراكز طقس وتقارير مطارين.",
-   "نموذجان من نوع Random Forest (الغابة العشوائية) تعلّما من " + s.years_of_data + " سنة من بيانات الحلة يقدّران احتمال المطر والغبار.",
-   "قواعد أمان تقرر: لا تنظيف أثناء المطر أو الغبار، وغسلتان كحد أقصى يومياً.",
-   "يقرأ جهاز ESP32 الأمر ويشغّل منظومة التنظيف."].forEach(function (t) { add(ol, el("li", null, t)); });
-  add(c, ol, el("p", "note", "يتعلّم النظام من جديد كل أسبوع ولا يعتمد نموذجاً جديداً إلا إذا كان أدق."));
+  var c = card(T("كيف يعمل النظام؟", "How does it work?")), ol = el("ol", "steps");
+  (LANG === "en" ? [
+    "Every hour it collects forecasts from 4 weather centres and reports from 2 airports.",
+    "Two Random Forest models, trained on " + s.years_of_data + " years of Hilla data, estimate the chance of rain and dust.",
+    "Safety rules decide: no cleaning during rain or dust, and at most two washes a day.",
+    "The ESP32 device reads the command and runs the cleaning system."
+  ] : [
+    "يجمع كل ساعة توقعات 4 مراكز طقس وتقارير مطارين.",
+    "نموذجان من نوع Random Forest (الغابة العشوائية) تعلّما من " + s.years_of_data + " سنة من بيانات الحلة يقدّران احتمال المطر والغبار.",
+    "قواعد أمان تقرر: لا تنظيف أثناء المطر أو الغبار، وغسلتان كحد أقصى يومياً.",
+    "يقرأ جهاز ESP32 الأمر ويشغّل منظومة التنظيف."
+  ]).forEach(function (t) { add(ol, el("li", null, t)); });
+  add(c, ol, el("p", "note", T("يتعلّم النظام من جديد كل أسبوع ولا يعتمد نموذجاً جديداً إلا إذا كان أدق.",
+                               "The system retrains every week and only adopts a new model if it is more accurate.")));
   return c;
 }
 
 /* 10. results */
 function results(s) {
-  var c = card("نتائج المشروع"), g = el("div", "grid");
-  [[Math.round(s.useful_cleans_pct) + "%", "من الغسلات مفيدة (مقابل " + Math.round(s.useful_cleans_rules_pct) + "% للقواعد الثابتة)"],
-   [s.fewer_washes_pct + "%", "غسلات أقل = ماء أقل"],
-   [s.rain_detect_ai_pct + "%", "من الأمطار يكتشفها النموذج (النشرة وحدها " + s.rain_detect_forecast_pct + "%)"],
-   [s.storms_missed_by_cams_pct + "%", "من عواصف الغبار القوية لا يراها مصدر الغبار العالمي — لذلك أضفنا عيون المطارات"]].forEach(function (x) {
+  var c = card(T("نتائج المشروع", "Project results")), g = el("div", "grid");
+  [[Math.round(s.useful_cleans_pct) + "%", T("من الغسلات مفيدة (مقابل " + Math.round(s.useful_cleans_rules_pct) + "% للقواعد الثابتة)",
+                                             "of washes are useful (vs " + Math.round(s.useful_cleans_rules_pct) + "% for fixed rules)")],
+   [s.fewer_washes_pct + "%", T("غسلات أقل = ماء أقل", "fewer washes = less water")],
+   [s.rain_detect_ai_pct + "%", T("من الأمطار يكتشفها النموذج (النشرة وحدها " + s.rain_detect_forecast_pct + "%)",
+                                  "of rain events caught by the model (forecast alone " + s.rain_detect_forecast_pct + "%)")],
+   [s.storms_missed_by_cams_pct + "%", T("من عواصف الغبار القوية لا يراها مصدر الغبار العالمي — لذلك أضفنا عيون المطارات",
+                                         "of strong dust storms are missed by the global dust source — so we added airport eyes")]].forEach(function (x) {
     add(g, add(el("div", "tile"), el("div", "big", x[0]), el("div", "w", x[1])));
   });
   return add(c, g);
@@ -409,7 +459,8 @@ function render(d) {
   var a = document.getElementById("app");
   a.textContent = "";
   var gen = d.command && d.command.generated_at;
-  document.getElementById("upd").textContent = gen ? "آخر تحديث: قبل " + ago(mins(gen)) : "آخر تحديث: غير متاح";
+  document.getElementById("upd").textContent = gen ? T("آخر تحديث: قبل " + ago(mins(gen)), "Updated " + ago(mins(gen)) + " ago")
+    : T("آخر تحديث: غير متاح", "Last update: not available");
   [hero(d), opinion(d), chart(d.forecast), weather(d.forecast), airports(d.forecast), logcard(d), device(d), how(d.stats), results(d.stats)]
     .forEach(function (x) { a.appendChild(x); });
   a.hidden = false;
