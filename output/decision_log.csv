@@ -43,3 +43,8 @@ command_id,action,reason,p_rain,p_dust,pm10,metar_strong,metar_haze,metar_min_vi
 2026-11-02T20:00:00+03:00,idle,nothing to clean,0.022,0.015,87.1,False,False,6.0
 2026-11-02T21:00:00+03:00,idle,nothing to clean,0.028,0.012,82.2,False,False,6.0
 2026-11-02T22:00:00+03:00,idle,nothing to clean,0.012,0.011,81.0,False,False,5.0
+2026-11-02T23:00:00+03:00,idle,nothing to clean,0.007,0.009,65.5,False,False,6.0
+2026-11-03T00:00:00+03:00,idle,nothing to clean,0.007,0.012,56.0,False,False,6.0
+2026-11-03T01:00:00+03:00,idle,nothing to clean,0.003,0.005,55.0,False,False,6.0
+2026-11-03T02:00:00+03:00,idle,nothing to clean,0.006,0.003,49.8,False,False,6.0
+2026-11-03T03:00:00+03:00,idle,nothing to clean,0.007,0.006,49.8,False,False,6.0
