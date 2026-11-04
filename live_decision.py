@@ -38,7 +38,7 @@ import numpy as np
 import pandas as pd
 import requests
 
-from decision import HOUR, new_state, step
+from decision import HOUR, RAIN_NOW_MM, new_state, step
 from download_data import AIR_URL, AIR_VARS, FORECAST_VARS, fetch
 from download_extra import CENTRE_VARS, FCX_VARS
 from download_metar import is_dust, to_hourly
@@ -92,10 +92,15 @@ def get_metar(start, end):
                 wx = "" if pd.isna(r["wxcodes"]) else str(r["wxcodes"])
                 air.append({"station": st, "name_ar": name, "km": km, "time": (r["valid"] + pd.Timedelta(hours=3)).isoformat(),
                             "vis_km": vis, "wx": wx, "dust": bool(is_dust(wx, 99 if vis is None else vis))})
-        return to_hourly(rep, start, end), True, air
+        m = to_hourly(rep, start, end)
+        wet = rep["wxcodes"].fillna("").str.contains(r"RA|TS|DZ|SH")     # rain, thunder, drizzle, showers
+        m["any_rain"] = m["time"].isin(set((rep.loc[wet, "valid"] + pd.Timedelta(hours=3)).dt.floor("h"))).astype(int)
+        return m, True, air
     except Exception as e:
         print(f"METAR failed ({type(e).__name__}: {e}) -> continuing without airport data")
-        return to_hourly(pd.DataFrame({"station": [], "valid": pd.to_datetime([]), "vsby": [], "wxcodes": []}), start, end), False, []
+        m = to_hourly(pd.DataFrame({"station": [], "valid": pd.to_datetime([]), "vsby": [], "wxcodes": []}), start, end)
+        m["any_rain"] = 0
+        return m, False, []
 
 
 def num(x, nd=3):
@@ -177,6 +182,9 @@ def main() -> int:
     strong = df["metar_strong_dust"].fillna(0) == 1
     dust_ob = strong & strong.shift(1, fill_value=False)
     haze_ob = (df["metar_any_dust"].fillna(0) == 1) & ~dust_ob
+    # the forecast's "rain now" misses local thunderstorms (4 Nov 2026: 0 mm while it poured), so an airport rain
+    # report counts as rain in Hilla too - but only when our own rain model agrees (airports are 60-90 km away)
+    air_rain = (df["metar_any_rain"].fillna(0) == 1) & ok & (p_rain >= th_r)
 
     # replay missed hours (cannot clean), then the current hour
     first = max(last + HOUR, t - (MAX_BACK_H - 1) * HOUR)
@@ -187,14 +195,15 @@ def main() -> int:
         if pd.isna(rain) or pd.isna(pm):
             print(f"warning: missing rain/pm10 at {h} (treated as 0)")
         safe = bool(ok[i] and p_rain[i] < th_r and p_dust[i] < th_d)
-        action, reason = step(state, h.to_pydatetime(), 0 if pd.isna(rain) else rain, 0 if pd.isna(pm) else pm, safe,
+        rain = max(0 if pd.isna(rain) else rain, RAIN_NOW_MM if air_rain[i] else 0)
+        action, reason = step(state, h.to_pydatetime(), rain, 0 if pd.isna(pm) else pm, safe,
                               dust_obs=bool(dust_ob[i]), haze=bool(haze_ob[i]), can_clean=h == t)
 
     cmd = {"command_id": iso(t), "generated_at": iso(now.floor("s")), "valid_until": iso(t + HOUR),
            "action": action, "pump": action == "clean", "max_duration_min": MAX_DURATION_MIN, "reason": reason,
            "p_rain": num(p_rain[i]), "p_dust": num(p_dust[i]), "thresholds": {"rain": num(th_r), "dust": num(th_d)},
            "now": {"rain_mm": num(df["fc_precipitation"][i]), "pm10": num(df["aq_pm10"][i], 1),
-                   "metar_strong_dust": bool(strong[i]), "metar_haze": bool(haze_ob[i]),
+                   "metar_rain": bool(air_rain[i]), "metar_strong_dust": bool(strong[i]), "metar_haze": bool(haze_ob[i]),
                    "metar_min_vis_km": num(df["metar_min_vis_km"][i], 2), "metar_ok": metar_ok},
            "pending": sorted(state["pending"]), "model_trained_until": mr["trained_until"], "source": SOURCE}
     (out / "command.json").write_text(json.dumps(cmd, indent=2, ensure_ascii=False), encoding="utf-8")

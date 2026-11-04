@@ -215,6 +215,12 @@ function reasonAr(r) {
   if (hit && r.indexOf("(max wait 48 h)") >= 0) out += T(" (بعد انتظار 48 ساعة)", " (after the 48 h maximum wait)");
   return out;
 }
+// "nothing to clean" while the model is above a threshold reads as "no rain" - say what the AI expects instead
+function why(r, th) {
+  if (r.action === "idle" && String(r.reason).indexOf("nothing to clean") >= 0 && th && (+r.p_rain >= th.rain || +r.p_dust >= th.dust))
+    return T("الذكاء الاصطناعي يتوقع مطراً أو غباراً — لا تنظيف الآن", "The AI expects rain or dust — no cleaning now");
+  return reasonAr(r.reason);
+}
 function wxAr(wx) {
   if (!wx) return T("صافٍ", "Clear");
   for (var i = 0; i < WX.length; i++) if (wx.indexOf(WX[i][0]) >= 0) return WX[i][1];
@@ -237,7 +243,7 @@ function hero(d) {
   var c = card(); c.className = "card hero";
   var lab = el("div", "lab " + s[2]);
   add(lab, el("span", "ic", s[1]), el("span", "t", s[0]));
-  add(c, lab, el("p", "why", safe ? T("لا يوجد أمر حديث — وضع الأمان", "No fresh command — safe mode") : reasonAr(cmd.reason)));
+  add(c, lab, el("p", "why", safe ? T("لا يوجد أمر حديث — وضع الأمان", "No fresh command — safe mode") : why(cmd, cmd.thresholds)));
   if (!safe) add(c, el("p", "until", T("صالح حتى ", "Valid until ") + hhmm(cmd.valid_until)));
   return c;
 }
@@ -391,7 +397,7 @@ function logcard(d) {
   var ul = el("ul", "log");
   rows.forEach(function (r, i) {
     var li = el("li"); li.dataset.i = i;
-    add(li, el("span", "tm", dayhm(r.command_id)), badge(r.action), el("span", "rs", reasonAr(r.reason)));
+    add(li, el("span", "tm", dayhm(r.command_id)), badge(r.action), el("span", "rs", why(r, d.command && d.command.thresholds)));
     if (i >= 6) li.hidden = true;
     add(ul, li);
   });
