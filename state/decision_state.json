@@ -1,13 +1,15 @@
 {
   "storm": false,
   "raining": false,
-  "pending": [],
-  "event_end": null,
+  "pending": [
+    "rain"
+  ],
+  "event_end": "2026-11-05T02:00:00",
   "cleans": [
     "2026-10-31T05:00:00",
     "2026-11-01T16:00:00"
   ],
   "last_end": "2026-11-01T06:00:00",
-  "pending_since": null,
-  "last_hour": "2026-11-04T03:00:00"
+  "pending_since": "2026-11-04T02:00:00",
+  "last_hour": "2026-11-05T03:00:00"
 }
