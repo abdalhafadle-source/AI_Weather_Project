@@ -1,0 +1,11 @@
+# Copy to /etc/systemd/system/hilla-watchdog.timer next to the .service file.
+# Enable with: sudo systemctl enable --now hilla-watchdog.timer
+[Unit]
+Description=Run the Hilla watchdog every 15 minutes
+
+[Timer]
+OnCalendar=*:10,25,40,55
+Persistent=true
+
+[Install]
+WantedBy=timers.target

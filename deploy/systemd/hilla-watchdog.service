@@ -1,0 +1,11 @@
+# Copy to /etc/systemd/system/hilla-watchdog.service, then: sudo systemctl daemon-reload
+# Put TELEGRAM_TOKEN=... and TELEGRAM_CHAT_ID=... in /etc/hilla/telegram.env (chmod 600), then enable the .timer.
+[Unit]
+Description=Hilla watchdog (Telegram alerts)
+
+[Service]
+Type=oneshot
+User=hilla
+WorkingDirectory=/home/hilla/app
+EnvironmentFile=/etc/hilla/telegram.env
+ExecStart=/home/hilla/venv/bin/python deploy/watchdog.py
