@@ -12,6 +12,7 @@ Caps: max 2 cleans per calendar day, at least 6 h between cleans.
 Optional dust_obs=True (airport reports STRONG dust) also starts / prolongs a storm; haze=True (light dust
 at the airport) only blocks cleaning that hour (also the forced MAX_WAIT clean).
 can_clean=False (replay of a missed past hour) turns the final clean into a wait.
+Heat rule: too_hot() (May-Sep 10:00-15:59, or forecast >= 40 C); the caller passes it as block="too hot".
 block="reason" (caller forbids a clean this hour, e.g. no airport data) turns the final clean, even the forced
 one, into a wait with that reason; pending is kept.
 Used by simulate_decisions.py (and later by the live server). No pandas needed.
@@ -40,6 +41,15 @@ MAX_PER_DAY = 2          # max cleans per calendar day
 MIN_GAP_H = 6            # min hours between two cleans
 MAX_WAIT_H = 48          # dirty this long since the first event -> clean even if the model says not safe
 HOUR = timedelta(hours=1)
+HOT_MONTHS = (5, 6, 7, 8, 9)   # May .. September
+HOT_HOURS = range(10, 16)      # 10:00 .. 15:59
+HOT_TEMP_C = 40                # forecast air temperature (2 m)
+
+
+def too_hot(t, temp_c=None):
+    """Cold water on sun-heated glass can crack it: no cleaning at summer midday (May-Sep, 10:00-15:59), nor
+    when the forecast air temperature is >= 40 C. temp_c None or NaN -> the calendar rule alone."""
+    return (t.month in HOT_MONTHS and t.hour in HOT_HOURS) or (temp_c is not None and temp_c >= HOT_TEMP_C)
 
 
 def write_atomic(path, text):
@@ -193,6 +203,20 @@ if __name__ == "__main__":
         acts.append(step(s, datetime(2025, 3, 1) + i * HOUR, 1 if i == 0 else 0, 20, False,
                          block="no airport data" if i == MAX_WAIT_H else None))
     assert acts[MAX_WAIT_H] == ("wait", "no airport data") and [i for i, a in enumerate(acts) if a[0] == "clean"] == [MAX_WAIT_H + 1], acts
+    # too_hot
+    nan = float("nan")
+    assert too_hot(datetime(2025, 7, 1, 12)) and not too_hot(datetime(2025, 7, 1, 17), 38)
+    assert too_hot(datetime(2025, 7, 1, 17), 41) and not too_hot(datetime(2025, 1, 1, 12), 20)
+    assert not too_hot(datetime(2025, 7, 1, 9), nan) and too_hot(datetime(2025, 7, 1, 12), None)
+    # rain at 9,10 on a 39 C July day: waits 11..15 (too hot), single clean at 16, pending kept meanwhile
+    s, acts = new_state(), []
+    for i in range(20):
+        t = datetime(2025, 7, 1) + i * HOUR
+        acts.append(step(s, t, 1 if i in (9, 10) else 0, 20, True, block="too hot" if too_hot(t, 39) else None))
+        if 11 <= i <= 15:
+            assert s["pending"] == {"rain"}
+    assert all(a == ("wait", "too hot") for a in acts[11:16]), acts
+    assert [i for i, a in enumerate(acts) if a[0] == "clean"] == [16], acts
     # write_atomic: second write replaces the first, no .tmp left behind
     with tempfile.TemporaryDirectory() as td:
         f = os.path.join(td, "x.json")

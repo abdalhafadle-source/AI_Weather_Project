@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 simulate_decisions.py
-Replay 2025-01-01 .. end of data hour by hour as if live, and compare cleaning strategies.
+Replay 2025-01-01 .. --end (default: the thesis period) hour by hour as if live, and compare cleaning strategies.
 
 Usage:
     python simulate_decisions.py            # reads data/processed/hilla_hourly_labeled.csv, models/thesis/
@@ -41,7 +41,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from decision import DUST_START, HOUR, MAX_PER_DAY, MIN_GAP_H, RAIN_NOW_MM, new_state, step
+from decision import DUST_START, HOUR, MAX_PER_DAY, MIN_GAP_H, RAIN_NOW_MM, new_state, step, too_hot
 from train_models import RAIN_MM, H, build, build_ext, fwd
 
 for _s in (sys.stdout, sys.stderr):
@@ -76,6 +76,7 @@ def main() -> int:
     ap.add_argument("--dir", default="data/processed")
     ap.add_argument("--models", default="models/thesis")
     ap.add_argument("--end", default=END)
+    ap.add_argument("--no-heat", action="store_true", help="replay without the heat rule (thesis numbers)")
     args = ap.parse_args()
     d = Path(args.dir)
     chart_dir = Path("reports/charts")
@@ -92,7 +93,8 @@ def main() -> int:
     mdir = Path(args.models)
     mr, md = joblib.load(mdir / "rain_model.joblib"), joblib.load(mdir / "dust_model.joblib")
     for m in (mr, md):
-        assert pd.Timestamp(m["trained_until"]) < pd.Timestamp(START),             f"{mdir}: trained_until {m['trained_until']} is inside the replay period (>= {START}): data leakage"
+        assert pd.Timestamp(m["trained_until"]) < pd.Timestamp(START), (
+            f"{mdir}: trained_until {m['trained_until']} is inside the replay period (>= {START}): data leakage")
     ok = X[mr["features"]].notna().all(axis=1) & X[md["features"]].notna().all(axis=1)
     p_rain, p_dust = pd.Series(np.nan, index=df.index), pd.Series(np.nan, index=df.index)
     p_rain[ok] = mr["model"].predict_proba(X.loc[ok, mr["features"]])[:, 1]
@@ -120,6 +122,7 @@ def main() -> int:
     times = df["time"]
     rain_in, pm_in = df["fc_precipitation"].to_numpy(), df["aq_pm10"].to_numpy()
     obs_rain = df["obs_precipitation"].to_numpy()
+    temp = df["fc_temperature_2m"].to_numpy()
     strong = df["metar_strong_dust"] == 1
     dust_ob = (strong & strong.shift(1, fill_value=False)).to_numpy()
     haze_ob = ((df["metar_any_dust"] == 1) & ~pd.Series(dust_ob, index=df.index)).to_numpy()
@@ -132,7 +135,8 @@ def main() -> int:
         for i in idx:
             t = times.iloc[i].to_pydatetime()
             before_p, before_in = len(st["pending"]), st["raining"] or st["storm"]
-            act, why = step(st, t, rain_in[i], pm_in[i], bool(sf[i]), mwait.get(name), dust_obs=bool(dust_ob[i]) and name != "AI_noMETAR", haze=bool(haze_ob[i]) and name != "AI_noMETAR")
+            act, why = step(st, t, rain_in[i], pm_in[i], bool(sf[i]), mwait.get(name), dust_obs=bool(dust_ob[i]) and name != "AI_noMETAR", haze=bool(haze_ob[i]) and name != "AI_noMETAR",
+                          block="too hot" if (not args.no_heat and too_hot(t, temp[i])) else None)
             if before_p == 0 and st["pending"]:
                 events += 1
             if before_p and not before_in and (st["raining"] or st["storm"]):
@@ -145,7 +149,7 @@ def main() -> int:
                                  outcome="good" if truth_safe.iloc[i] else "wasted",
                                  outcome_cams="good" if truth_cams.iloc[i] else "wasted",
                                  during_event=bool(obs_rain[i] >= RAIN_MM or pm_in[i] >= DUST_START),
-                                 p_rain=p_rain.iloc[i], p_dust=p_dust.iloc[i]))
+                                 p_rain=p_rain.iloc[i], p_dust=p_dust.iloc[i], hot=bool(too_hot(t, temp[i]))))
         stats[name] = dict(events=events, missed=missed, dirty=np.array(dirty), cleans=st["cleans"])
         # self-checks
         days = pd.Series(st["cleans"]).dt.date.value_counts() if st["cleans"] else pd.Series(dtype=int)
@@ -153,7 +157,7 @@ def main() -> int:
         gaps = np.diff(pd.Series(st["cleans"]).to_numpy()) / np.timedelta64(1, "h")
         assert (gaps >= MIN_GAP_H).all(), f"{name}: gap below {MIN_GAP_H} h"
 
-    dec = pd.DataFrame(rows, columns=["strategy", "time", "trigger", "outcome", "outcome_cams", "during_event", "p_rain", "p_dust"])
+    dec = pd.DataFrame(rows, columns=["strategy", "time", "trigger", "outcome", "outcome_cams", "during_event", "p_rain", "p_dust", "hot"])
     dec.to_csv(d / "decisions_2025_2026.csv", index=False)
 
     t0, t1 = times.iloc[idx[0]], times.iloc[idx[-1]]
@@ -192,6 +196,9 @@ def main() -> int:
             row += f"{z:>9.2f}{pv:>8.3f}{'yes' if pv < 0.05 else 'no':>5}"
         P(row)
     P("note: all strategies replay the same weather, so their cleans are not independent samples; z is indicative only.")
+    P("heat rule: " + ("OFF (--no-heat)" if args.no_heat else "ON") + " = no clean May-Sep 10:00-15:59 or at forecast air temperature >= 40 C")
+    P("cleans inside the heat window: " + ", ".join(f"{n} {int(dec.loc[dec['strategy'] == n, 'hot'].sum())}" for n in STRATS))
+    assert args.no_heat or not dec["hot"].any(), "a clean inside the heat window with the rule ON"
 
     # charts
     fig, ax = plt.subplots(figsize=(8, 4.5))

@@ -15,6 +15,7 @@ like train_models.py --extended; models: models/extended/{rain,dust}_model.jobli
 Hours missed since the last run (at most 48 h) are replayed with can_clean=False, so only the current hour
 can issue a clean. If METAR is down, the run continues but never issues a clean without airport data
 (wait: no airport data, the clean stays pending).
+No clean in the heat either (decision.too_hot: May-Sep 10:00-15:59, or forecast >= 40 C): wait: too hot.
 
 Outputs:
     state/decision_state.json   the decision state (the server must keep this file between runs)
@@ -39,7 +40,7 @@ import numpy as np
 import pandas as pd
 import requests
 
-from decision import HOUR, RAIN_NOW_MM, new_state, step, write_atomic
+from decision import HOUR, RAIN_NOW_MM, new_state, step, too_hot, write_atomic
 from download_data import AIR_URL, AIR_VARS, FORECAST_VARS, fetch
 from download_extra import CENTRE_VARS, FCX_VARS
 from download_metar import is_dust, to_hourly
@@ -202,7 +203,7 @@ def main() -> int:
         rain = max(0 if pd.isna(rain) else rain, RAIN_NOW_MM if air_rain[i] else 0)
         action, reason = step(state, h.to_pydatetime(), rain, 0 if pd.isna(pm) else pm, safe,
                               dust_obs=bool(dust_ob[i]), haze=bool(haze_ob[i]), can_clean=h == t,
-                              block="no airport data" if no_air[i] else None)
+                              block="no airport data" if no_air[i] else "too hot" if too_hot(h, df["fc_temperature_2m"][i]) else None)
 
     cmd = {"command_id": iso(t), "generated_at": iso(now.floor("s")), "valid_until": iso(t + HOUR),
            "action": action, "pump": action == "clean", "max_duration_min": MAX_DURATION_MIN, "reason": reason,
