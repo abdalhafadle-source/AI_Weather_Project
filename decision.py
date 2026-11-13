@@ -12,6 +12,8 @@ Caps: max 2 cleans per calendar day, at least 6 h between cleans.
 Optional dust_obs=True (airport reports STRONG dust) also starts / prolongs a storm; haze=True (light dust
 at the airport) only blocks cleaning that hour (also the forced MAX_WAIT clean).
 can_clean=False (replay of a missed past hour) turns the final clean into a wait.
+block="reason" (caller forbids a clean this hour, e.g. no airport data) turns the final clean, even the forced
+one, into a wait with that reason; pending is kept.
 Used by simulate_decisions.py (and later by the live server). No pandas needed.
 
 Data: Open-Meteo.com (CC BY 4.0) - cite it in the report.
@@ -44,7 +46,7 @@ def new_state():
                 pending_since=None)
 
 
-def step(state, t, rain_mm, pm10, safe, min_wait=None, dust_obs=False, haze=False, can_clean=True):
+def step(state, t, rain_mm, pm10, safe, min_wait=None, dust_obs=False, haze=False, can_clean=True, block=None):
     mw = min_wait or {"rain": RAIN_MIN_WAIT_H, "dust": DUST_MIN_WAIT_H}
     # 1. rain now
     if rain_mm >= RAIN_NOW_MM:
@@ -91,6 +93,8 @@ def step(state, t, rain_mm, pm10, safe, min_wait=None, dust_obs=False, haze=Fals
     # 8. clean (can_clean=False: replaying a past hour, a clean there never physically happened)
     if not can_clean:
         return "wait", "replay: past hour"
+    if block:                                  # the caller forbids a clean this hour (e.g. no airport data)
+        return "wait", block
     kinds = "+".join(sorted(state["pending"]))
     state["cleans"].append(t)
     state["last_end"] = state["event_end"]
@@ -162,4 +166,19 @@ if __name__ == "__main__":
     acts = [step(s, datetime(2025, 3, 1) + i * HOUR, 1 if i in (2, 3) else 0, 20, True, can_clean=i != 4)
             for i in range(6)]
     assert acts[4] == ("wait", "replay: past hour") and s["cleans"] == [datetime(2025, 3, 1, 5)] and acts[5][0] == "clean", acts
+    # block: rain at 2,3, blocked only at hour 4 -> wait, still pending, clean at 5
+    s = new_state()
+    acts = [step(s, datetime(2025, 3, 1) + i * HOUR, 1 if i in (2, 3) else 0, 20, True,
+                 block="no airport data" if i == 4 else None) for i in range(6)]
+    assert acts[4] == ("wait", "no airport data") and acts[5][0] == "clean" and s["cleans"] == [datetime(2025, 3, 1, 5)], acts
+    s = new_state()
+    for i in range(5):
+        a = step(s, datetime(2025, 3, 1) + i * HOUR, 1 if i in (2, 3) else 0, 20, True, block="no airport data" if i == 4 else None)
+    assert a == ("wait", "no airport data") and s["pending"] == {"rain"}, (a, s)
+    # block also stops the forced MAX_WAIT clean: wait at hour MAX_WAIT_H, clean at MAX_WAIT_H + 1
+    s, acts = new_state(), []
+    for i in range(MAX_WAIT_H + 3):
+        acts.append(step(s, datetime(2025, 3, 1) + i * HOUR, 1 if i == 0 else 0, 20, False,
+                         block="no airport data" if i == MAX_WAIT_H else None))
+    assert acts[MAX_WAIT_H] == ("wait", "no airport data") and [i for i, a in enumerate(acts) if a[0] == "clean"] == [MAX_WAIT_H + 1], acts
     print("decision.py self-test passed")

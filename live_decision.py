@@ -13,7 +13,8 @@ Inputs: Open-Meteo forecast (best_match, best_match extra, gfs, ukmo, jma) + air
 2 days; airport reports (METAR ORNI, ORBI) of the last 48 h from aviationweather.gov. Features are built exactly
 like train_models.py --extended; models: models/extended/{rain,dust}_model.joblib.
 Hours missed since the last run (at most 48 h) are replayed with can_clean=False, so only the current hour
-can issue a clean. If METAR is down, the run continues with "no dust, visibility 10 km, 0 stations".
+can issue a clean. If METAR is down, the run continues but never issues a clean without airport data
+(wait: no airport data, the clean stays pending).
 
 Outputs:
     state/decision_state.json   the decision state (the server must keep this file between runs)
@@ -179,6 +180,9 @@ def main() -> int:
         return 0
 
     # airport inputs exactly as in simulate_decisions
+    # no airport report at all (fetch failed, or no station reported in the last 3 h): CAMS alone misses most
+    # local dust storms, so never clean blind - wait, and keep the clean pending
+    no_air = (df["metar_available"].fillna(0) == 0) | (not metar_ok)
     strong = df["metar_strong_dust"].fillna(0) == 1
     dust_ob = strong & strong.shift(1, fill_value=False)
     haze_ob = (df["metar_any_dust"].fillna(0) == 1) & ~dust_ob
@@ -197,14 +201,16 @@ def main() -> int:
         safe = bool(ok[i] and p_rain[i] < th_r and p_dust[i] < th_d)
         rain = max(0 if pd.isna(rain) else rain, RAIN_NOW_MM if air_rain[i] else 0)
         action, reason = step(state, h.to_pydatetime(), rain, 0 if pd.isna(pm) else pm, safe,
-                              dust_obs=bool(dust_ob[i]), haze=bool(haze_ob[i]), can_clean=h == t)
+                              dust_obs=bool(dust_ob[i]), haze=bool(haze_ob[i]), can_clean=h == t,
+                              block="no airport data" if no_air[i] else None)
 
     cmd = {"command_id": iso(t), "generated_at": iso(now.floor("s")), "valid_until": iso(t + HOUR),
            "action": action, "pump": action == "clean", "max_duration_min": MAX_DURATION_MIN, "reason": reason,
            "p_rain": num(p_rain[i]), "p_dust": num(p_dust[i]), "thresholds": {"rain": num(th_r), "dust": num(th_d)},
            "now": {"rain_mm": num(df["fc_precipitation"][i]), "pm10": num(df["aq_pm10"][i], 1),
                    "metar_rain": bool(air_rain[i]), "metar_strong_dust": bool(strong[i]), "metar_haze": bool(haze_ob[i]),
-                   "metar_min_vis_km": num(df["metar_min_vis_km"][i], 2), "metar_ok": metar_ok},
+                   "metar_min_vis_km": num(df["metar_min_vis_km"][i], 2), "metar_ok": metar_ok,
+                   "metar_available": int(df["metar_available"].fillna(0)[i])},
            "pending": sorted(state["pending"]), "model_trained_until": mr["trained_until"], "source": SOURCE}
     (out / "command.json").write_text(json.dumps(cmd, indent=2, ensure_ascii=False), encoding="utf-8")
     log = out / "decision_log.csv"
