@@ -77,12 +77,21 @@ def bd(t):
     return t.astimezone(BAGHDAD).strftime("%Y-%m-%d %H:%M")
 
 
+def ago(h):
+    # Arabic duration: hours up to 2 days, then days
+    n = int(h)
+    if n < 48:
+        return "ساعتين" if n == 2 else f"{n} ساعات" if 3 <= n <= 10 else f"{n} ساعة"
+    d = n // 24
+    return "يومين" if d == 2 else f"{d} أيام" if d <= 10 else f"{d} يوماً"
+
+
 def age_fact(now, when, what, ok_text, missing):
     # when = aware datetime, or None (file missing / broken)
     if when is None:
         return (True, missing, ok_text, 0)
     h = (now - when).total_seconds() / 3600
-    return (h > STALE_H, f"{what} منذ {int(h)} ساعات. آخر مرة: {bd(when)}.", ok_text, 0)
+    return (h > STALE_H, f"{what} منذ {ago(h)}. آخر مرة: {bd(when)}.", ok_text, 0)
 
 
 def check_backup(now):
@@ -106,7 +115,7 @@ def check_backup(now):
             when = datetime.fromtimestamp(ts, timezone.utc)
             h = (now - when).total_seconds() / 3600
             if h > BACKUP_MAX_H:
-                problems.append(f"آخر نسخة احتياطية قبل {int(h)} ساعة ({bd(when)})")
+                problems.append(f"آخر نسخة احتياطية قبل {ago(h)} ({bd(when)})")
         except Exception:
             problems.append("تعذّرت قراءة آخر نسخة احتياطية")
     return (bool(problems), "النسخ الاحتياطي: " + "، ".join(problems) + ".")
@@ -178,6 +187,8 @@ def self_test():
         m, mem = judge(h(k), air(True), mem)
     m, mem = judge(h(5), air(False), mem)  # back before 6 h: nothing at all
     assert m == [] and mem == {}, (m, mem)
+    assert ago(2) == "ساعتين" and ago(5) == "5 ساعات" and ago(22) == "22 ساعة"
+    assert ago(49) == "يومين" and ago(265) == "11 يوماً"
     print("watchdog.py self-test passed")
 
 
