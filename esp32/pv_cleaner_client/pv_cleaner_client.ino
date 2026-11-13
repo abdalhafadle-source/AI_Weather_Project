@@ -12,6 +12,7 @@
 //   - a run never lasts longer than HARD_CAP_MS (30 min), whatever the command says
 //   - at most 2 runs per day and 6 h between runs, even if the command file says otherwise
 //   - all relays OFF at boot
+//   - after a clean really starts, the server is told (POST /ack); the last executed id is also repeated on every poll
 
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
@@ -19,10 +20,14 @@
 #include <Preferences.h>
 #include "ArduinoJson-v7.4.3.h"  // bundled single-file ArduinoJson (MIT): works even if the libraries folder path has non-English letters
 #include <time.h>
-#include "secrets.h"  // WIFI_SSID, WIFI_PASS
+#include "secrets.h"  // WIFI_SSID, WIFI_PASS, ACK_KEY
+#ifndef ACK_KEY
+#error "Add ACK_KEY to secrets.h (see secrets.example.h): the same key as on the server"
+#endif
 #include "root_ca.h"  // ROOT_CAS: Let's Encrypt roots, to check the server's identity
 
 const char* COMMAND_URL = "https://hilla-ai.duckdns.org/command";  // our VPS, encrypted
+const char* ACK_URL = "https://hilla-ai.duckdns.org/ack";
 
 const int RELAY_BRUSH = 26;  // change to your wiring
 const int RELAY_PUMP = 27;
@@ -75,10 +80,27 @@ bool fetchCommand(JsonDocument& doc) {
   http.setConnectTimeout(30000);
   http.setTimeout(30000);
   if (!http.begin(client, COMMAND_URL)) return false;
+  http.addHeader("X-Key", ACK_KEY);                             // proves it is our ESP32
+  http.addHeader("X-Last-Id", prefs.getString("last_id", ""));  // the last command we really ran (backup if an ack got lost)
   int code = http.GET();
   bool ok = code == 200 && deserializeJson(doc, http.getString()) == DeserializationError::Ok;
   http.end();
   return ok;
+}
+
+// tell the server this command really started; a failure here never stops the wash
+void sendAck(const char* id) {
+  WiFiClientSecure tls;
+  tls.setCACert(ROOT_CAS);
+  HTTPClient http;
+  http.setConnectTimeout(10000);
+  http.setTimeout(10000);
+  if (!http.begin(tls, ACK_URL)) return;
+  http.addHeader("Content-Type", "application/json");
+  http.addHeader("X-Key", ACK_KEY);
+  int code = http.POST(String("{\"command_id\":\"") + id + "\"}");
+  Serial.printf("ack -> %d\n", code);
+  http.end();
 }
 
 void poll() {
@@ -122,6 +144,7 @@ void poll() {
   running = true;
   relays(true);
   Serial.printf("CLEAN start for %lu min\n", runMs / 60000UL);
+  sendAck(id);
 }
 
 void setup() {

@@ -215,6 +215,7 @@ function reasonAr(r) {
   var out = r, hit = false;
   for (var i = 0; i < REASONS.length; i++) if (r.indexOf(REASONS[i][0]) === 0 || r.indexOf(REASONS[i][0]) >= 0) { out = REASONS[i][1]; hit = true; break; }
   if (hit && r.indexOf("(max wait 48 h)") >= 0) out += T(" (بعد انتظار 48 ساعة)", " (after the 48 h maximum wait)");
+  if (r.indexOf("(retry") >= 0) out += T(" (إعادة: الأمر السابق لم يؤكده الجهاز)", " (retry: the device did not confirm the previous command)");
   return out;
 }
 // "nothing to clean" while the model is above a threshold reads as "no rain" - say what the AI expects instead

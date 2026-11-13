@@ -21,6 +21,10 @@ Outputs:
     state/decision_state.json   the decision state (the server must keep this file between runs)
     output/command.json         the command for the ESP32 (rewritten, not recomputed, if run twice in one hour)
     output/decision_log.csv     one line per run
+Confirmation: the ESP32 confirms each clean it really starts (server/app.py stores the ids in output/esp32_ack.json).
+A clean still unconfirmed 2 h after it was issued never happened: the state goes back to just before it (pending
+again) and the hours since are replayed, so it is issued again in the first safe hour, still inside the 2/day and
+6 h caps, with "(retry N)" in the reason. Nothing is checked while esp32_ack.json does not exist (old firmware).
 ESP32 contract: execute only when action == "clean", command_id was not executed before, and now < valid_until;
 never run the pump longer than max_duration_min (the ESP32 enforces its own 30-min cap anyway).
 
@@ -29,10 +33,10 @@ Data: Open-Meteo.com (CC BY 4.0); METAR: aviationweather.gov.
 from __future__ import annotations
 
 import argparse
+import copy
 import csv
 import json
 import sys
-from datetime import datetime
 from pathlib import Path
 
 import joblib
@@ -40,7 +44,7 @@ import numpy as np
 import pandas as pd
 import requests
 
-from decision import HOUR, RAIN_NOW_MM, new_state, step, too_hot, write_atomic
+from decision import HOUR, RAIN_NOW_MM, dump_state, load_state, new_state, settle, step, too_hot, write_atomic
 from download_data import AIR_URL, AIR_VARS, FORECAST_VARS, fetch
 from download_extra import CENTRE_VARS, FCX_VARS
 from download_metar import is_dust, to_hourly
@@ -105,6 +109,19 @@ def get_metar(start, end):
         return m, False, []
 
 
+def read_acks(out):
+    # command ids the ESP32 confirmed (written by server/app.py). None = confirmations not in use yet
+    # (no file: old firmware), or the file is unreadable (then the clean is assumed executed, never repeated blind)
+    p = out / "esp32_ack.json"
+    if not p.exists():
+        return None
+    try:
+        return set(json.loads(p.read_text(encoding="utf-8"))["ids"])
+    except Exception as e:
+        print(f"warning: {p} unreadable ({type(e).__name__}) -> confirmations ignored this run")
+        return None
+
+
 def num(x, nd=3):
     return None if pd.isna(x) else round(float(x), nd)
 
@@ -128,9 +145,7 @@ def main() -> int:
     if not args.at and spath.exists():
         js = json.loads(spath.read_text(encoding="utf-8"))
         last = pd.Timestamp(js.pop("last_hour"))
-        state = {k: (set(v) if k == "pending" else [datetime.fromisoformat(c) for c in v] if k == "cleans"
-                     else datetime.fromisoformat(v) if v and k in ("event_end", "last_end", "pending_since") else v)
-                 for k, v in js.items()}
+        state = load_state(js)
         same = last == t                                 # already decided this hour: repeat the same command
 
     # data
@@ -191,6 +206,14 @@ def main() -> int:
     # report counts as rain in Hilla too - but only when our own rain model agrees (airports are 60-90 km away)
     air_rain = (df["metar_any_rain"].fillna(0) == 1) & ok & (p_rain >= th_r)
 
+    # an issued clean the ESP32 never confirmed: back to pending, replay from that hour (not in a test run)
+    before = None
+    if not args.at:
+        state, redo = settle(state, read_acks(out), t.to_pydatetime())
+        if redo is not None:
+            print(f"clean issued at {redo} was never confirmed by the ESP32 -> pending again, replaying from that hour")
+            last = pd.Timestamp(redo) - HOUR
+
     # replay missed hours (cannot clean), then the current hour
     first = max(last + HOUR, t - (MAX_BACK_H - 1) * HOUR)
     assert first <= t, "state is ahead of the requested hour"
@@ -199,11 +222,19 @@ def main() -> int:
         rain, pm = df["fc_precipitation"][i], df["aq_pm10"][i]
         if pd.isna(rain) or pd.isna(pm):
             print(f"warning: missing rain/pm10 at {h} (treated as 0)")
+        if h == t:
+            before = copy.deepcopy(state)
+            before.pop("issued", None)
         safe = bool(ok[i] and p_rain[i] < th_r and p_dust[i] < th_d)
         rain = max(0 if pd.isna(rain) else rain, RAIN_NOW_MM if air_rain[i] else 0)
         action, reason = step(state, h.to_pydatetime(), rain, 0 if pd.isna(pm) else pm, safe,
                               dust_obs=bool(dust_ob[i]), haze=bool(haze_ob[i]), can_clean=h == t,
                               block="no airport data" if no_air[i] else "too hot" if too_hot(h, df["fc_temperature_2m"][i]) else None)
+
+    if action == "clean":
+        if state.get("retries"):
+            reason += f" (retry {state['retries']})"
+        state["issued"] = {"id": iso(t), "t": t.to_pydatetime(), "undo": before}
 
     cmd = {"command_id": iso(t), "generated_at": iso(now.floor("s")), "valid_until": iso(t + HOUR),
            "action": action, "pump": action == "clean", "max_duration_min": MAX_DURATION_MIN, "reason": reason,
@@ -226,8 +257,7 @@ def main() -> int:
 
     if not args.at:
         spath.parent.mkdir(parents=True, exist_ok=True)
-        js = {k: (sorted(v) if k == "pending" else [c.isoformat() for c in v] if k == "cleans"
-                  else v.isoformat() if isinstance(v, datetime) else v) for k, v in state.items()}
+        js = dump_state(state)
         js["last_hour"] = t.isoformat()
         write_atomic(spath, json.dumps(js, indent=2))
 

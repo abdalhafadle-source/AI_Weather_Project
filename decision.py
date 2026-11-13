@@ -15,6 +15,8 @@ can_clean=False (replay of a missed past hour) turns the final clean into a wait
 Heat rule: too_hot() (May-Sep 10:00-15:59, or forecast >= 40 C); the caller passes it as block="too hot".
 block="reason" (caller forbids a clean this hour, e.g. no airport data) turns the final clean, even the forced
 one, into a wait with that reason; pending is kept.
+settle(state, acked, t) checks the last issued clean (state["issued"], set by the caller) against the command ids
+the ESP32 confirmed; after ACK_GRACE_H without confirmation it rolls the state back to just before that clean.
 Used by simulate_decisions.py (and later by the live server). No pandas needed.
 
 Data: Open-Meteo.com (CC BY 4.0) - cite it in the report.
@@ -41,6 +43,7 @@ MAX_PER_DAY = 2          # max cleans per calendar day
 MIN_GAP_H = 6            # min hours between two cleans
 MAX_WAIT_H = 48          # dirty this long since the first event -> clean even if the model says not safe
 HOUR = timedelta(hours=1)
+ACK_GRACE_H = 2      # an issued clean the ESP32 has not confirmed after this long never happened
 HOT_MONTHS = (5, 6, 7, 8, 9)   # May .. September
 HOT_HOURS = range(10, 16)      # 10:00 .. 15:59
 HOT_TEMP_C = 40                # forecast air temperature (2 m)
@@ -66,6 +69,57 @@ def new_state():
     # last_end = event end used by the last clean (only for reporting "dirty time")
     return dict(storm=False, raining=False, pending=set(), event_end=None, cleans=[], last_end=None,
                 pending_since=None)
+
+
+def dump_state(s):
+    """state -> JSON-ready dict (sets and datetimes become lists and ISO strings)."""
+    out = {}
+    for k, v in s.items():
+        if k == "pending":
+            out[k] = sorted(v)
+        elif k == "cleans":
+            out[k] = [c.isoformat() for c in v]
+        elif k == "issued":
+            out[k] = {"id": v["id"], "t": v["t"].isoformat(), "undo": dump_state(v["undo"])}
+        else:
+            out[k] = v.isoformat() if isinstance(v, datetime) else v
+    return out
+
+
+def load_state(js):
+    """inverse of dump_state."""
+    out = {}
+    for k, v in js.items():
+        if k == "pending":
+            out[k] = set(v)
+        elif k == "cleans":
+            out[k] = [datetime.fromisoformat(c) for c in v]
+        elif k == "issued":
+            out[k] = {"id": v["id"], "t": datetime.fromisoformat(v["t"]), "undo": load_state(v["undo"])}
+        elif v and k in ("event_end", "last_end", "pending_since"):
+            out[k] = datetime.fromisoformat(v)
+        else:
+            out[k] = v
+    return out
+
+
+def settle(state, acked, t):
+    """Check the last issued clean against the command ids the ESP32 confirmed (acked: a set of ids, or None
+    when confirmations are not in use yet). Returns (state, replay_from). replay_from is None, or - when the
+    clean was never confirmed - the hour of that clean, with the state rolled back to just before it: the
+    caller replays from that hour with can_clean=False, so the clean is issued again in the first safe hour."""
+    job = state.get("issued")
+    if not job:
+        return state, None
+    if acked is None or job["id"] in acked:            # confirmations not in use yet / the ESP32 confirmed it
+        del state["issued"]
+        state.pop("retries", None)
+        return state, None
+    if t - job["t"] < timedelta(hours=ACK_GRACE_H):    # still time for the confirmation to arrive
+        return state, None
+    undo = job["undo"]                                 # never happened: back to the state just before it
+    undo["retries"] = undo.get("retries", 0) + 1
+    return undo, job["t"]
 
 
 def step(state, t, rain_mm, pm10, safe, min_wait=None, dust_obs=False, haze=False, can_clean=True, block=None):
@@ -223,4 +277,30 @@ if __name__ == "__main__":
         write_atomic(f, "a")
         write_atomic(f, "b")
         assert open(f, encoding="utf-8").read() == "b" and os.listdir(td) == ["x.json"], os.listdir(td)
+    # settle: rain 2,3 -> clean at 4, issued but maybe never executed
+    import copy
+    import json
+    T0 = datetime(2025, 3, 1)
+    s = new_state()
+    for i in range(4):
+        step(s, T0 + i * HOUR, 1 if i in (2, 3) else 0, 20, True)
+    before = copy.deepcopy(s)
+    assert step(s, T0 + 4 * HOUR, 0, 20, True)[0] == "clean"
+    s["issued"] = {"id": "c4", "t": T0 + 4 * HOUR, "undo": before}
+    assert load_state(json.loads(json.dumps(dump_state(s)))) == s
+    old = dump_state(new_state())                      # an old state file (no issued, no retries) still loads
+    assert "issued" not in load_state(old) and "retries" not in load_state(old)
+    a, redo = settle(copy.deepcopy(s), {"c4"}, T0 + 5 * HOUR)
+    assert "issued" not in a and redo is None and a["cleans"] == [T0 + 4 * HOUR], a
+    a, redo = settle(copy.deepcopy(s), set(), T0 + 5 * HOUR)
+    assert "issued" in a and redo is None
+    a, redo = settle(copy.deepcopy(s), set(), T0 + 6 * HOUR)
+    assert a["pending"] == {"rain"} and a["cleans"] == [] and a["pending_since"] == T0 + 2 * HOUR, a
+    assert a["retries"] == 1 and "issued" not in a and redo == T0 + 4 * HOUR, (a, redo)
+    acts = [step(a, T0 + i * HOUR, 0, 20, True, can_clean=i == 6)[0] for i in range(4, 7)]
+    assert acts == ["wait", "wait", "clean"] and a["cleans"] == [T0 + 6 * HOUR], (acts, a)
+    a, redo = settle(copy.deepcopy(s), {"demo-20261114T100000"}, T0 + 6 * HOUR)
+    assert a["cleans"] == [] and redo == T0 + 4 * HOUR
+    a, redo = settle(copy.deepcopy(s), None, T0 + 9 * HOUR)
+    assert "issued" not in a and redo is None and a["cleans"] == [T0 + 4 * HOUR]
     print("decision.py self-test passed")
