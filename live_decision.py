@@ -39,7 +39,7 @@ import numpy as np
 import pandas as pd
 import requests
 
-from decision import HOUR, RAIN_NOW_MM, new_state, step
+from decision import HOUR, RAIN_NOW_MM, new_state, step, write_atomic
 from download_data import AIR_URL, AIR_VARS, FORECAST_VARS, fetch
 from download_extra import CENTRE_VARS, FCX_VARS
 from download_metar import is_dust, to_hourly
@@ -170,7 +170,7 @@ def main() -> int:
                   "wind_dir": r1("fc_wind_direction_10m", i), "cloud": r1("fc_cloud_cover", i), "pm10": r1("aq_pm10", i),
                   "dust": r1("aq_dust", i), "weather_code": r1("fcx_weather_code", i)},
           "airports": airports}
-    (out / "forecast.json").write_text(json.dumps(fc, indent=2, ensure_ascii=False), encoding="utf-8")
+    write_atomic(out / "forecast.json", json.dumps(fc, indent=2, ensure_ascii=False))
 
     if same:
         cmd = json.loads((out / "command.json").read_text(encoding="utf-8"))
@@ -212,7 +212,7 @@ def main() -> int:
                    "metar_min_vis_km": num(df["metar_min_vis_km"][i], 2), "metar_ok": metar_ok,
                    "metar_available": int(df["metar_available"].fillna(0)[i])},
            "pending": sorted(state["pending"]), "model_trained_until": mr["trained_until"], "source": SOURCE}
-    (out / "command.json").write_text(json.dumps(cmd, indent=2, ensure_ascii=False), encoding="utf-8")
+    write_atomic(out / "command.json", json.dumps(cmd, indent=2, ensure_ascii=False))
     log = out / "decision_log.csv"
     new = not log.exists()
     with open(log, "a", newline="", encoding="utf-8") as f:
@@ -228,7 +228,7 @@ def main() -> int:
         js = {k: (sorted(v) if k == "pending" else [c.isoformat() for c in v] if k == "cleans"
                   else v.isoformat() if isinstance(v, datetime) else v) for k, v in state.items()}
         js["last_hour"] = t.isoformat()
-        spath.write_text(json.dumps(js, indent=2), encoding="utf-8")
+        write_atomic(spath, json.dumps(js, indent=2))
 
     print(json.dumps(cmd, indent=2, ensure_ascii=False))
     print(f"saved {out / 'command.json'}   (METAR ok: {metar_ok})")

@@ -20,7 +20,9 @@ Data: Open-Meteo.com (CC BY 4.0) - cite it in the report.
 """
 from __future__ import annotations
 
+import os
 import sys
+import tempfile
 from datetime import datetime, timedelta
 
 for _s in (sys.stdout, sys.stderr):
@@ -38,6 +40,16 @@ MAX_PER_DAY = 2          # max cleans per calendar day
 MIN_GAP_H = 6            # min hours between two cleans
 MAX_WAIT_H = 48          # dirty this long since the first event -> clean even if the model says not safe
 HOUR = timedelta(hours=1)
+
+
+def write_atomic(path, text):
+    """Write text to path via a temp file + os.replace: a crash or power cut never leaves a half-written file."""
+    tmp = f"{path}.tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        f.write(text)
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(tmp, path)
 
 
 def new_state():
@@ -181,4 +193,10 @@ if __name__ == "__main__":
         acts.append(step(s, datetime(2025, 3, 1) + i * HOUR, 1 if i == 0 else 0, 20, False,
                          block="no airport data" if i == MAX_WAIT_H else None))
     assert acts[MAX_WAIT_H] == ("wait", "no airport data") and [i for i, a in enumerate(acts) if a[0] == "clean"] == [MAX_WAIT_H + 1], acts
+    # write_atomic: second write replaces the first, no .tmp left behind
+    with tempfile.TemporaryDirectory() as td:
+        f = os.path.join(td, "x.json")
+        write_atomic(f, "a")
+        write_atomic(f, "b")
+        assert open(f, encoding="utf-8").read() == "b" and os.listdir(td) == ["x.json"], os.listdir(td)
     print("decision.py self-test passed")
