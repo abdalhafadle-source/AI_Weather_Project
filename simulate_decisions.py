@@ -4,8 +4,12 @@ simulate_decisions.py
 Replay 2025-01-01 .. end of data hour by hour as if live, and compare cleaning strategies.
 
 Usage:
-    python simulate_decisions.py            # reads data/processed/hilla_hourly_labeled.csv, models/extended/
-    python simulate_decisions.py --dir data/processed
+    python simulate_decisions.py            # reads data/processed/hilla_hourly_labeled.csv, models/thesis/
+    python simulate_decisions.py --dir data/processed --models models/thesis --end "2026-10-22 17:00"
+
+models/thesis is frozen: the original models from commit 2a0b961 (trained until 2024-12-31); retrain.py and the
+backup never write there. The script refuses any model trained inside the replay period (data leakage), and
+--end pins the thesis period so the numbers stay reproducible.
 
 Live inputs to decision.step(): fc_precipitation (forecast, not obs) and aq_pm10. Strategies differ only in
 `safe` / `min_wait`:  AI (extended models), FixedDelay (rules only), Fixed5h (always wait 5 h),
@@ -46,6 +50,7 @@ for _s in (sys.stdout, sys.stderr):
         pass
 
 START = "2025-01-01"
+END = "2026-10-22 17:00"     # last replayed hour of the thesis run
 SAFE_PM10 = 150          # PM10 that re-dirties panels
 STRATS = ("AI", "AI_noMETAR", "FixedDelay", "Fixed5h", "ForecastRule", "Oracle")
 
@@ -53,6 +58,8 @@ STRATS = ("AI", "AI_noMETAR", "FixedDelay", "Fixed5h", "ForecastRule", "Oracle")
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--dir", default="data/processed")
+    ap.add_argument("--models", default="models/thesis")
+    ap.add_argument("--end", default=END)
     args = ap.parse_args()
     d = Path(args.dir)
     chart_dir = Path("reports/charts")
@@ -66,7 +73,10 @@ def main() -> int:
     df = pd.read_csv(d / "hilla_hourly_labeled.csv", parse_dates=["time"])
     X = build(df)
     X = X.join(build_ext(df, X))
-    mr, md = joblib.load("models/extended/rain_model.joblib"), joblib.load("models/extended/dust_model.joblib")
+    mdir = Path(args.models)
+    mr, md = joblib.load(mdir / "rain_model.joblib"), joblib.load(mdir / "dust_model.joblib")
+    for m in (mr, md):
+        assert pd.Timestamp(m["trained_until"]) < pd.Timestamp(START),             f"{mdir}: trained_until {m['trained_until']} is inside the replay period (>= {START}): data leakage"
     ok = X[mr["features"]].notna().all(axis=1) & X[md["features"]].notna().all(axis=1)
     p_rain, p_dust = pd.Series(np.nan, index=df.index), pd.Series(np.nan, index=df.index)
     p_rain[ok] = mr["model"].predict_proba(X.loc[ok, mr["features"]])[:, 1]
@@ -89,7 +99,7 @@ def main() -> int:
             "Oracle": truth_safe}
     mwait = {"Fixed5h": {"rain": 5, "dust": 5}}
 
-    idx = np.flatnonzero((df["time"] >= START) & known).tolist()
+    idx = np.flatnonzero((df["time"] >= START) & (df["time"] <= args.end) & known).tolist()
     assert df["aq_pm10"].iloc[idx].notna().all(), "NaN pm10 in the replay period"
     times = df["time"]
     rain_in, pm_in = df["fc_precipitation"].to_numpy(), df["aq_pm10"].to_numpy()
