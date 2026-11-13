@@ -8,6 +8,7 @@ Usage (terminal, inside the folder that contains this file):
     python live_decision.py                       # decide for the current hour (Asia/Baghdad)
     python live_decision.py --at "2026-10-29 07:00"   # test: evaluate a past hour, temporary fresh state,
                                                       # does NOT touch state/ ; files go to output/test/
+                                                      # (with --state FILE: reads and writes that file, for tests)
 
 Inputs: Open-Meteo forecast (best_match, best_match extra, gfs, ukmo, jma) + air quality, last 2 days and next
 2 days; airport reports (METAR ORNI, ORBI) of the last 48 h from aviationweather.gov. Features are built exactly
@@ -129,7 +130,8 @@ def num(x, nd=3):
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--at", default=None, help='evaluate this past hour instead, e.g. "2026-10-29 07:00" (test)')
-    ap.add_argument("--state", default="state/decision_state.json")
+    ap.add_argument("--state", default=None, help="state file (normal run: state/decision_state.json; with --at no state "
+                    "is used unless --state is given: then that file is read and written, for end-to-end tests)")
     ap.add_argument("--out", default="output")
     args = ap.parse_args()
 
@@ -138,11 +140,12 @@ def main() -> int:
     iso = lambda x: x.isoformat() + "+03:00"
     out = Path(args.out) / "test" if args.at else Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
-    spath = Path(args.state)
+    spath = Path(args.state or "state/decision_state.json")
+    use_state = not args.at or args.state is not None     # a test run keeps a state only when --state is given
 
     # state (a test run never reads or writes it)
     state, last, same = new_state(), t - 24 * HOUR, False
-    if not args.at and spath.exists():
+    if use_state and spath.exists():
         js = json.loads(spath.read_text(encoding="utf-8"))
         last = pd.Timestamp(js.pop("last_hour"))
         state = load_state(js)
@@ -208,7 +211,7 @@ def main() -> int:
 
     # an issued clean the ESP32 never confirmed: back to pending, replay from that hour (not in a test run)
     before = None
-    if not args.at:
+    if use_state:
         state, redo = settle(state, read_acks(out), t.to_pydatetime())
         if redo is not None:
             print(f"clean issued at {redo} was never confirmed by the ESP32 -> pending again, replaying from that hour")
@@ -255,7 +258,7 @@ def main() -> int:
         w.writerow([cmd["command_id"], action, reason, cmd["p_rain"], cmd["p_dust"], n["pm10"],
                     n["metar_strong_dust"], n["metar_haze"], n["metar_min_vis_km"]])
 
-    if not args.at:
+    if use_state:
         spath.parent.mkdir(parents=True, exist_ok=True)
         js = dump_state(state)
         js["last_hour"] = t.isoformat()
