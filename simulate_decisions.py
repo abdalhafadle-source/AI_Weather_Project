@@ -29,6 +29,7 @@ Data: Open-Meteo.com (CC BY 4.0) - cite it in the report.
 from __future__ import annotations
 
 import argparse
+import math
 import sys
 from pathlib import Path
 
@@ -53,6 +54,21 @@ START = "2025-01-01"
 END = "2026-10-22 17:00"     # last replayed hour of the thesis run
 SAFE_PM10 = 150          # PM10 that re-dirties panels
 STRATS = ("AI", "AI_noMETAR", "FixedDelay", "Fixed5h", "ForecastRule", "Oracle")
+
+
+def wilson(k, n, z=1.96):
+    """95% Wilson interval for the proportion k/n -> (lo, hi)."""
+    p = k / n
+    c = (p + z * z / (2 * n)) / (1 + z * z / n)
+    h = z * math.sqrt(p * (1 - p) / n + z * z / (4 * n * n)) / (1 + z * z / n)
+    return c - h, c + h
+
+
+def ztest(k1, n1, k2, n2):
+    """Two-proportion z-test (pooled) -> (z, two-sided p); z > 0 when the first proportion is higher."""
+    p = (k1 + k2) / (n1 + n2)
+    z = (k1 / n1 - k2 / n2) / math.sqrt(p * (1 - p) * (1 / n1 + 1 / n2))
+    return z, math.erfc(abs(z) / math.sqrt(2))
 
 
 def main() -> int:
@@ -165,6 +181,18 @@ def main() -> int:
       % DUST_START)
     P("events = times something needed cleaning; missed = a new event arrived before we cleaned.")
 
+    P("\ngood% with 95% Wilson interval; z / p = two-proportion z-test of AI against the strategy (z > 0: AI higher); sig = p < 0.05")
+    P(f"{'strategy':<14}{'good%':>7}{'95% CI':>16}{'z_vs_AI':>9}{'p':>8}{'sig':>5}")
+    for name in STRATS:
+        k, w = summ[name]
+        lo, hi = wilson(k, k + w)
+        row = f"{name:<14}{100 * k / (k + w):>7.1f}{f'[{100 * lo:.1f}, {100 * hi:.1f}]':>16}"
+        if name != "AI":
+            z, pv = ztest(*summ["AI"][:1], sum(summ["AI"]), k, k + w)
+            row += f"{z:>9.2f}{pv:>8.3f}{'yes' if pv < 0.05 else 'no':>5}"
+        P(row)
+    P("note: all strategies replay the same weather, so their cleans are not independent samples; z is indicative only.")
+
     # charts
     fig, ax = plt.subplots(figsize=(8, 4.5))
     xs = np.arange(len(STRATS))
@@ -227,6 +255,9 @@ def main() -> int:
     plt.close(fig)
 
     assert set(dec["strategy"]) == set(STRATS), "a strategy made no cleans"
+    lo, hi = wilson(70, 89)
+    assert abs(lo - 0.690) < 0.001 and abs(hi - 0.859) < 0.001, "wilson self-check"
+    assert abs(ztest(70, 89, 85, 144)[0] - 3.08) < 0.01, "ztest self-check"
     P("\nchecks passed. Data: Open-Meteo.com (CC BY 4.0)")
     (d / "simulation_report.txt").write_text("\n".join(out), encoding="utf-8")
     print(f"\nreport saved to {d / 'simulation_report.txt'}")
