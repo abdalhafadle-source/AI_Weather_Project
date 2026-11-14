@@ -17,6 +17,7 @@ Hours missed since the last run (at most 48 h) are replayed with can_clean=False
 can issue a clean. If METAR is down, the run continues but never issues a clean without airport data
 (wait: no airport data, the clean stays pending).
 No clean in the heat either (decision.too_hot: May-Sep 10:00-15:59, or forecast >= 40 C): wait: too hot.
+A routine clean every 7 days without a clean (decision.ROUTINE_DAYS) is added to pending; command.json shows routine.due.
 No clean while the ESP32 is offline (no poll for 45 min, esp32_seen.json): wait: device offline, kept pending.
 
 Outputs:
@@ -46,7 +47,8 @@ import numpy as np
 import pandas as pd
 import requests
 
-from decision import HOUR, RAIN_NOW_MM, dump_state, load_state, new_state, settle, step, too_hot, write_atomic
+from decision import (HOUR, RAIN_NOW_MM, ROUTINE_DAYS, dump_state, load_state, new_state, routine_due, settle, step,
+                      too_hot, write_atomic)
 from download_data import AIR_URL, AIR_VARS, FORECAST_VARS, fetch
 from download_extra import CENTRE_VARS, FCX_VARS
 from download_metar import is_dust, to_hourly
@@ -244,7 +246,7 @@ def main() -> int:
         safe = bool(ok[i] and p_rain[i] < th_r and p_dust[i] < th_d)
         rain = max(0 if pd.isna(rain) else rain, RAIN_NOW_MM if air_rain[i] else 0)
         action, reason = step(state, h.to_pydatetime(), rain, 0 if pd.isna(pm) else pm, safe,
-                              dust_obs=bool(dust_ob[i]), haze=bool(haze_ob[i]), can_clean=h == t,
+                              dust_obs=bool(dust_ob[i]), haze=bool(haze_ob[i]), can_clean=h == t, routine_days=ROUTINE_DAYS,
                               block="device offline" if offline else "no airport data" if no_air[i] else "too hot" if too_hot(h, df["fc_temperature_2m"][i]) else None)
 
     if action == "clean":
@@ -259,7 +261,8 @@ def main() -> int:
                    "metar_rain": bool(air_rain[i]), "metar_strong_dust": bool(strong[i]), "metar_haze": bool(haze_ob[i]),
                    "metar_min_vis_km": num(df["metar_min_vis_km"][i], 2), "metar_ok": metar_ok,
                    "metar_available": int(df["metar_available"].fillna(0)[i])},
-           "pending": sorted(state["pending"]), "model_trained_until": mr["trained_until"], "source": SOURCE}
+           "pending": sorted(state["pending"]),
+           "routine": {"days": ROUTINE_DAYS, "due": iso(routine_due(state)) if routine_due(state) else None}, "model_trained_until": mr["trained_until"], "source": SOURCE}
     write_atomic(out / "command.json", json.dumps(cmd, indent=2, ensure_ascii=False))
     log = out / "decision_log.csv"
     new = not log.exists()

@@ -20,6 +20,9 @@ Airport dust is passed to step() for every strategy except AI_noMETAR (same mode
 dust_obs = strong dust now and 1 h ago (storm), haze = any other airport dust now (blocks cleaning).
 Oracle uses the primary truth.
 
+Routine clean: every strategy also cleans when 7 days pass without a clean (decision.ROUTINE_DAYS); --no-routine
+switches it off. The original thesis numbers = --no-heat --no-routine.
+
 Outputs: <dir>/decisions_2025_2026.csv, <dir>/simulation_report.txt,
          reports/charts/strategy_comparison.png, decision_timeline.png
 Only hilla_hourly_labeled.csv and the saved models are read; the raw folders are never touched.
@@ -41,7 +44,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from decision import DUST_START, HOUR, MAX_PER_DAY, MIN_GAP_H, RAIN_NOW_MM, new_state, step, too_hot
+from decision import DUST_START, HOUR, MAX_PER_DAY, MIN_GAP_H, RAIN_NOW_MM, ROUTINE_DAYS, new_state, step, too_hot
 from train_models import RAIN_MM, H, build, build_ext, fwd
 
 for _s in (sys.stdout, sys.stderr):
@@ -77,6 +80,7 @@ def main() -> int:
     ap.add_argument("--models", default="models/thesis")
     ap.add_argument("--end", default=END)
     ap.add_argument("--no-heat", action="store_true", help="replay without the heat rule (thesis numbers)")
+    ap.add_argument("--no-routine", action="store_true", help="replay without the 7-day routine clean (thesis numbers)")
     args = ap.parse_args()
     d = Path(args.dir)
     chart_dir = Path("reports/charts")
@@ -136,7 +140,8 @@ def main() -> int:
             t = times.iloc[i].to_pydatetime()
             before_p, before_in = len(st["pending"]), st["raining"] or st["storm"]
             act, why = step(st, t, rain_in[i], pm_in[i], bool(sf[i]), mwait.get(name), dust_obs=bool(dust_ob[i]) and name != "AI_noMETAR", haze=bool(haze_ob[i]) and name != "AI_noMETAR",
-                          block="too hot" if (not args.no_heat and too_hot(t, temp[i])) else None)
+                          block="too hot" if (not args.no_heat and too_hot(t, temp[i])) else None,
+                          routine_days=0 if args.no_routine else ROUTINE_DAYS)
             if before_p == 0 and st["pending"]:
                 events += 1
             if before_p and not before_in and (st["raining"] or st["storm"]):
@@ -198,6 +203,10 @@ def main() -> int:
     P("note: all strategies replay the same weather, so their cleans are not independent samples; z is indicative only.")
     P("heat rule: " + ("OFF (--no-heat)" if args.no_heat else "ON") + " = no clean May-Sep 10:00-15:59 or at forecast air temperature >= 40 C")
     P("cleans inside the heat window: " + ", ".join(f"{n} {int(dec.loc[dec['strategy'] == n, 'hot'].sum())}" for n in STRATS))
+    P("routine clean: " + ("OFF (--no-routine)" if args.no_routine else f"ON (every {ROUTINE_DAYS} days without a clean)"))
+    P("routine cleans (good): " + ", ".join(
+        f"{n} {int(r.sum())} ({int((r & (dec.loc[dec['strategy'] == n, 'outcome'] == 'good')).sum())} good)"
+        for n in STRATS for r in [dec.loc[dec["strategy"] == n, "trigger"].str.contains("routine")]))
     assert args.no_heat or not dec["hot"].any(), "a clean inside the heat window with the rule ON"
 
     # charts

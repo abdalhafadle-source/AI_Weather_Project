@@ -135,6 +135,7 @@ function T(ar, en) { return LANG === "en" ? en : ar; }
 var ST = {clean: [T("نظّف الآن", "Clean now"), "✓", "s-clean", "var(--good)"], wait: [T("انتظر", "Wait"), "⏸", "s-wait", "var(--warn)"],
           idle: [T("لا حاجة للتنظيف", "No cleaning needed"), "○", "s-idle", "var(--idle)"]};
 var REASONS = [["after dust+rain", T("انتهى المطر والغبار والأجواء القادمة آمنة", "Rain and dust are over and the coming hours are safe")],
+  ["after routine", T("غسلة دورية: مرّت 7 أيام على آخر غسلة والأجواء القادمة آمنة", "Routine wash: 7 days since the last wash and the coming hours are safe")],
   ["after rain", T("انتهى المطر والأجواء القادمة آمنة", "Rain is over and the coming hours are safe")],
   ["after dust", T("انتهت عاصفة الغبار والأجواء القادمة آمنة", "The dust storm is over and the coming hours are safe")],
   ["raining", T("تمطر الآن", "It is raining now")], ["dust storm", T("عاصفة غبار جارية", "Dust storm in progress")],
@@ -397,6 +398,10 @@ function airports(f) {
 function logcard(d) {
   var c = card(T("سجل القرارات", "Decision log")), rows = (d.log || []).slice(-24).reverse();
   add(c, el("p", null, d.last_clean ? T("آخر غسلة: ", "Last wash: ") + dayhm(d.last_clean) : T("لم تحدث غسلة بعد", "No wash yet")));
+  var ro = d.command && d.command.routine;
+  if (ro && ro.due) add(c, el("p", null, Date.parse(ro.due) > Date.now()
+    ? T("الغسلة الدورية القادمة: ", "Next routine wash: ") + dayhm(ro.due) + T(" (أو قبلها بعد مطر أو غبار)", " (or earlier, after rain or dust)")
+    : T("الغسلة الدورية مستحقة — تنتظر أول ساعة آمنة", "Routine wash is due — waiting for the first safe hour")));
   if (!rows.length) return add(c, el("p", "note", T("لا توجد قرارات مسجلة بعد.", "No decisions logged yet.")));
   var ul = el("ul", "log");
   rows.forEach(function (r, i) {

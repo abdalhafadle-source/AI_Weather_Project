@@ -17,6 +17,9 @@ block="reason" (caller forbids a clean this hour, e.g. no airport data) turns th
 one, into a wait with that reason; pending is kept.
 settle(state, acked, t) checks the last issued clean (state["issued"], set by the caller) against the command ids
 the ESP32 confirmed; after ACK_GRACE_H without confirmation it rolls the state back to just before that clean.
+Routine clean (routine_days > 0): when that many days pass without a clean (counted from the last clean, or from the
+first call), "routine" becomes pending and is cleaned in the first safe hour under every rule above; no min wait,
+and the forced MAX_WAIT_H clean does not apply to a routine clean alone. routine_due() says when the next is due.
 Used by simulate_decisions.py (and later by the live server). No pandas needed.
 
 Data: Open-Meteo.com (CC BY 4.0) - cite it in the report.
@@ -44,6 +47,7 @@ MIN_GAP_H = 6            # min hours between two cleans
 MAX_WAIT_H = 48          # dirty this long since the first event -> clean even if the model says not safe
 HOUR = timedelta(hours=1)
 ACK_GRACE_H = 2      # an issued clean the ESP32 has not confirmed after this long never happened
+ROUTINE_DAYS = 7         # light dust settles every day: clean when this many days pass without a clean
 HOT_MONTHS = (5, 6, 7, 8, 9)   # May .. September
 HOT_HOURS = range(10, 16)      # 10:00 .. 15:59
 HOT_TEMP_C = 40                # forecast air temperature (2 m)
@@ -96,7 +100,7 @@ def load_state(js):
             out[k] = [datetime.fromisoformat(c) for c in v]
         elif k == "issued":
             out[k] = {"id": v["id"], "t": datetime.fromisoformat(v["t"]), "undo": load_state(v["undo"])}
-        elif v and k in ("event_end", "last_end", "pending_since"):
+        elif v and k in ("event_end", "last_end", "pending_since", "since"):
             out[k] = datetime.fromisoformat(v)
         else:
             out[k] = v
@@ -122,7 +126,7 @@ def settle(state, acked, t):
     return undo, job["t"]
 
 
-def step(state, t, rain_mm, pm10, safe, min_wait=None, dust_obs=False, haze=False, can_clean=True, block=None):
+def step(state, t, rain_mm, pm10, safe, min_wait=None, dust_obs=False, haze=False, can_clean=True, block=None, routine_days=0):
     mw = min_wait or {"rain": RAIN_MIN_WAIT_H, "dust": DUST_MIN_WAIT_H}
     # 1. rain now
     if rain_mm >= RAIN_NOW_MM:
@@ -150,11 +154,15 @@ def step(state, t, rain_mm, pm10, safe, min_wait=None, dust_obs=False, haze=Fals
         state["raining"] = False
         e = state["event_end"]
         state["event_end"] = t - HOUR if e is None else max(e, t - HOUR)
-    # 4. nothing to clean
+    # 4. nothing to clean - unless the routine clean is due
     if not state["pending"]:
-        return "idle", "nothing to clean"
+        ref = state["cleans"][-1] if state["cleans"] else state.setdefault("since", t)
+        if not routine_days or t - ref < timedelta(days=routine_days):
+            return "idle", "nothing to clean"
+        state["pending"].add("routine")
+        state["pending_since"], state["event_end"] = t, t - HOUR
     # 5. minimum wait after the event
-    need = max(mw[k] for k in state["pending"])
+    need = max(mw.get(k, 0) for k in state["pending"])
     if state["event_end"] is None or t - state["event_end"] < timedelta(hours=need):
         return "wait", f"waiting {need} h after event"
     # 6. safety caps
@@ -163,7 +171,7 @@ def step(state, t, rain_mm, pm10, safe, min_wait=None, dust_obs=False, haze=Fals
     if state["cleans"] and t - state["cleans"][-1] < timedelta(hours=MIN_GAP_H):
         return "wait", "min gap"
     # 7. model / forecast check, unless the panel has been dirty for MAX_WAIT_H
-    forced = t - state["pending_since"] >= timedelta(hours=MAX_WAIT_H)
+    forced = state["pending"] != {"routine"} and t - state["pending_since"] >= timedelta(hours=MAX_WAIT_H)
     if not safe and not forced:
         return "wait", "model: next 6 h not safe"
     # 8. clean (can_clean=False: replaying a past hour, a clean there never physically happened)
@@ -176,6 +184,12 @@ def step(state, t, rain_mm, pm10, safe, min_wait=None, dust_obs=False, haze=Fals
     state["last_end"] = state["event_end"]
     state["pending"], state["event_end"], state["pending_since"] = set(), None, None
     return "clean", "after " + kinds + (f" (max wait {MAX_WAIT_H} h)" if not safe else "")
+
+
+def routine_due(state, routine_days=ROUTINE_DAYS):
+    """When the next routine clean becomes due (datetime), or None when unknown / switched off."""
+    ref = state["cleans"][-1] if state.get("cleans") else state.get("since")
+    return ref + timedelta(days=routine_days) if routine_days and ref else None
 
 
 def _run(seq, safe=lambda i: True, start=datetime(2025, 3, 1, 0)):
@@ -303,4 +317,31 @@ if __name__ == "__main__":
     assert a["cleans"] == [] and redo == T0 + 4 * HOUR
     a, redo = settle(copy.deepcopy(s), None, T0 + 9 * HOUR)
     assert "issued" not in a and redo is None and a["cleans"] == [T0 + 4 * HOUR]
+    # routine clean
+    R = lambda s, i, rain=0, safe=True: step(s, T0 + i * HOUR, rain, 20, safe, routine_days=7)
+    s = new_state()
+    acts = [R(s, i) for i in range(400)]
+    assert [i for i, a in enumerate(acts) if a[0] == "clean"] == [168, 336], s["cleans"]
+    assert acts[168] == ("clean", "after routine") and acts[167] == ("idle", "nothing to clean")
+    assert routine_due(s) == T0 + 504 * HOUR and routine_due(new_state()) is None and routine_due(s, 0) is None
+    s = new_state()
+    acts = [R(s, i, 1 if i == 72 else 0) for i in range(300)]       # rain on day 3: clean at 73, routine 7 days after THAT
+    assert [i for i, a in enumerate(acts) if a[0] == "clean"] == [73, 241], s["cleans"]
+    assert acts[73][1] == "after rain" and acts[241][1] == "after routine"
+    s = new_state()                                                  # routine due, never safe: never forced
+    acts = [R(s, i, safe=False) for i in range(230)]
+    assert all(a[0] != "clean" for a in acts) and acts[229] == ("wait", "model: next 6 h not safe"), acts[229]
+    for i in range(230, 400):                                        # rain, then still never safe: the forced clean works
+        a = R(s, i, 1 if i in (230, 231) else 0, safe=False)
+        if a[0] == "clean":
+            break
+    assert a[0] == "clean" and "rain" in a[1] and "max wait" in a[1], (i, a)
+    s = new_state()                                                  # routine due, then rain: one clean "rain+routine"
+    acts = [R(s, i, 1 if i == 170 else 0, safe=i >= 175) for i in range(200)]
+    assert [i for i, a in enumerate(acts) if a[0] == "clean"] == [175] and acts[175][1] == "after rain+routine", acts[175]
+    s = new_state()
+    assert all(step(s, T0 + i * HOUR, 0, 20, True)[0] == "idle" for i in range(400))      # routine_days=0: off
+    s = new_state()
+    R(s, 0)
+    assert load_state(json.loads(json.dumps(dump_state(s)))) == s and "since" in s
     print("decision.py self-test passed")
