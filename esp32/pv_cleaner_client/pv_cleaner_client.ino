@@ -2,8 +2,11 @@
 // ESP32 side of the Hilla PV-cleaning AI: every 14 min read the command that our VPS writes
 // every hour, and when it says "clean" (with a command_id not run before) switch the brush + pump relays on.
 //
-// Board: ESP32 (Arduino core). Library: ArduinoJson v7 (Arduino IDE -> Library Manager).
-// Put your Wi-Fi name/password in secrets.h (copy secrets.example.h). secrets.h is never published.
+// Board: ESP32 (Arduino core). Libraries are bundled in this folder (ArduinoJson, WiFiManager by tzapu, MIT).
+// Wi-Fi is set from a phone, no re-upload needed (WiFiManager): when the saved network is not reachable, the
+// ESP32 opens its own network "Hilla-PV-Setup" (password PORTAL_PASS in secrets.h) for 3 minutes; join it,
+// pick the new network and type its password. Hold the BOOT button 3 s to open it on purpose.
+// secrets.h (copy secrets.example.h) holds ACK_KEY and PORTAL_PASS and is never published.
 //
 // Safety, all enforced here on the ESP32 itself:
 //   - no answer / bad answer / no Wi-Fi  -> do nothing
@@ -20,14 +23,22 @@
 #include <Preferences.h>
 #include "ArduinoJson-v7.4.3.h"  // bundled single-file ArduinoJson (MIT): works even if the libraries folder path has non-English letters
 #include <time.h>
-#include "secrets.h"  // WIFI_SSID, WIFI_PASS, ACK_KEY
+#include "WiFiManager.h"  // bundled WiFiManager 2.0.17 (MIT, see WiFiManager-LICENSE.txt)
+#include "secrets.h"  // ACK_KEY, PORTAL_PASS
 #ifndef ACK_KEY
 #error "Add ACK_KEY to secrets.h (see secrets.example.h): the same key as on the server"
+#endif
+#ifndef PORTAL_PASS
+#error "Add PORTAL_PASS to secrets.h (see secrets.example.h): password of the Wi-Fi setup network, 8+ characters"
 #endif
 #include "root_ca.h"  // ROOT_CAS: Let's Encrypt roots, to check the server's identity
 
 const char* COMMAND_URL = "https://hilla-ai.duckdns.org/command";  // our VPS, encrypted
 const char* ACK_URL = "https://hilla-ai.duckdns.org/ack";
+const char* PORTAL_NAME = "Hilla-PV-Setup";  // the ESP32's own network for Wi-Fi setup
+const int PORTAL_S = 180;                    // setup network stays open 3 min, then it tries again later
+const int SETUP_BUTTON = 0;                  // BOOT button (GPIO0): hold 3 s to open the setup network
+const int WIFI_FAILS_TO_PORTAL = 3;          // polls in a row without Wi-Fi (~42 min) -> open the setup network
 
 const int RELAY_BRUSH = 26;  // change to your wiring
 const int RELAY_PUMP = 27;
@@ -42,6 +53,18 @@ const int MAX_PER_DAY = 2;         // file is ever wrong or tampered with
 Preferences prefs;
 unsigned long lastPoll = 0, runStart = 0, runMs = 0;
 bool running = false, polledOnce = false;
+int wifiFails = 0;
+
+// connect to the saved network; if that fails, open the setup network for PORTAL_S seconds (relays stay OFF:
+// only called while not cleaning). force = open the setup network even if the saved one works.
+void wifiSetup(bool force) {
+  WiFiManager wm;
+  wm.setConfigPortalTimeout(PORTAL_S);
+  wm.setConnectTimeout(20);
+  Serial.printf("Wi-Fi setup: if no network, join \"%s\" from a phone\n", PORTAL_NAME);
+  bool ok = force ? wm.startConfigPortal(PORTAL_NAME, PORTAL_PASS) : wm.autoConnect(PORTAL_NAME, PORTAL_PASS);
+  Serial.println(ok ? "Wi-Fi connected" : "Wi-Fi setup timed out -> will try again later");
+}
 
 void relays(bool on) {
   digitalWrite(RELAY_BRUSH, on ? RELAY_ON : !RELAY_ON);
@@ -155,8 +178,9 @@ void setup() {
   pinMode(RELAY_PUMP, OUTPUT);
   relays(false);
   prefs.begin("pvclean", false);
+  pinMode(SETUP_BUTTON, INPUT_PULLUP);
   WiFi.mode(WIFI_STA);
-  WiFi.begin(WIFI_SSID, WIFI_PASS);
+  wifiSetup(false);  // saved network, or the setup network for 3 min
   configTime(0, 0, "pool.ntp.org", "time.google.com");  // UTC clock from the internet (free)
 }
 
@@ -166,9 +190,18 @@ void loop() {
     running = false;
     Serial.println("CLEAN done");
   }
+  if (!running && digitalRead(SETUP_BUTTON) == LOW) {  // BOOT held 3 s -> Wi-Fi setup network
+    delay(3000);
+    if (digitalRead(SETUP_BUTTON) == LOW) wifiSetup(true);
+  }
   if (!running && (!polledOnce || millis() - lastPoll >= POLL_MS)) {
     polledOnce = true;
     lastPoll = millis();
+    if (WiFi.status() != WL_CONNECTED && !wifiReady() && ++wifiFails >= WIFI_FAILS_TO_PORTAL) {
+      wifiFails = 0;
+      wifiSetup(false);  // network changed or gone: let the owner pick a new one from a phone
+    }
+    if (WiFi.status() == WL_CONNECTED) wifiFails = 0;
     poll();
   }
   delay(1000);
