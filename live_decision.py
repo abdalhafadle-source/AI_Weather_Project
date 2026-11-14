@@ -17,6 +17,7 @@ Hours missed since the last run (at most 48 h) are replayed with can_clean=False
 can issue a clean. If METAR is down, the run continues but never issues a clean without airport data
 (wait: no airport data, the clean stays pending).
 No clean in the heat either (decision.too_hot: May-Sep 10:00-15:59, or forecast >= 40 C): wait: too hot.
+No clean while the ESP32 is offline (no poll for 45 min, esp32_seen.json): wait: device offline, kept pending.
 
 Outputs:
     state/decision_state.json   the decision state (the server must keep this file between runs)
@@ -63,6 +64,7 @@ AIRPORTS = (("ORNI", "مطار النجف", 60), ("ORBI", "مطار بغداد",
 LAT, LON = 32.48, 44.42
 MAX_BACK_H = 48
 MAX_DURATION_MIN = 30
+OFFLINE_MIN = 45      # the ESP32 polls every 14 min; silent this long = offline, a clean would be lost
 SOURCE = "Open-Meteo.com (CC BY 4.0); METAR: aviationweather.gov"
 LOG_COLS = ["command_id", "action", "reason", "p_rain", "p_dust", "pm10", "metar_strong", "metar_haze", "metar_min_vis_km"]
 
@@ -121,6 +123,16 @@ def read_acks(out):
     except Exception as e:
         print(f"warning: {p} unreadable ({type(e).__name__}) -> confirmations ignored this run")
         return None
+
+
+def device_offline(out):
+    # True when the ESP32 has not asked for a command for OFFLINE_MIN minutes (server/app.py keeps
+    # esp32_seen.json next to the command file); a missing or unreadable file also counts as offline
+    try:
+        seen = json.loads((out / "esp32_seen.json").read_text(encoding="utf-8"))["last_seen"]
+        return pd.Timestamp.now(tz="UTC") - pd.Timestamp(seen) > pd.Timedelta(minutes=OFFLINE_MIN)
+    except Exception:
+        return True
 
 
 def num(x, nd=3):
@@ -218,6 +230,7 @@ def main() -> int:
             last = pd.Timestamp(redo) - HOUR
 
     # replay missed hours (cannot clean), then the current hour
+    offline = device_offline(out)
     first = max(last + HOUR, t - (MAX_BACK_H - 1) * HOUR)
     assert first <= t, "state is ahead of the requested hour"
     for i in df.index[(df["time"] >= first) & (df["time"] <= t)]:
@@ -232,7 +245,7 @@ def main() -> int:
         rain = max(0 if pd.isna(rain) else rain, RAIN_NOW_MM if air_rain[i] else 0)
         action, reason = step(state, h.to_pydatetime(), rain, 0 if pd.isna(pm) else pm, safe,
                               dust_obs=bool(dust_ob[i]), haze=bool(haze_ob[i]), can_clean=h == t,
-                              block="no airport data" if no_air[i] else "too hot" if too_hot(h, df["fc_temperature_2m"][i]) else None)
+                              block="device offline" if offline else "no airport data" if no_air[i] else "too hot" if too_hot(h, df["fc_temperature_2m"][i]) else None)
 
     if action == "clean":
         if state.get("retries"):
