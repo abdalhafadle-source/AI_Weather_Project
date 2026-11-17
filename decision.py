@@ -130,7 +130,8 @@ def step(state, t, rain_mm, pm10, safe, min_wait=None, dust_obs=False, haze=Fals
     mw = min_wait or {"rain": RAIN_MIN_WAIT_H, "dust": DUST_MIN_WAIT_H}
     # 1. rain now
     if rain_mm >= RAIN_NOW_MM:
-        state["pending_since"] = state["pending_since"] or t
+        if not state["pending"] or state["pending"] == {"routine"}:   # the 48 h count starts at the event
+            state["pending_since"] = t
         state["pending"].add("rain")
         state["event_end"], state["raining"] = None, True
         return "wait", "raining"
@@ -142,7 +143,8 @@ def step(state, t, rain_mm, pm10, safe, min_wait=None, dust_obs=False, haze=Fals
         state["storm"] = False
         state["event_end"] = t - HOUR
     if state["storm"]:
-        state["pending_since"] = state["pending_since"] or t
+        if not state["pending"] or state["pending"] == {"routine"}:   # the 48 h count starts at the event
+            state["pending_since"] = t
         state["pending"].add("dust")
         state["event_end"] = None
         return "wait", "dust storm"
@@ -339,6 +341,11 @@ if __name__ == "__main__":
     s = new_state()                                                  # routine due, then rain: one clean "rain+routine"
     acts = [R(s, i, 1 if i == 170 else 0, safe=i >= 175) for i in range(200)]
     assert [i for i, a in enumerate(acts) if a[0] == "clean"] == [175] and acts[175][1] == "after rain+routine", acts[175]
+    # routine due and never safe for 60 h, then 1 h rain: the 48 h count starts at the rain, not at the routine
+    s, acts = new_state(), []
+    for i in range(60 + 1 + MAX_WAIT_H + 5):
+        acts.append(step(s, T0 + i * HOUR, 1 if i == 60 else 0, 20, False, routine_days=1))
+    assert [i for i, a in enumerate(acts) if a[0] == "clean"] == [60 + MAX_WAIT_H], acts[60 + MAX_WAIT_H - 2:60 + MAX_WAIT_H + 2]
     s = new_state()
     assert all(step(s, T0 + i * HOUR, 0, 20, True)[0] == "idle" for i in range(400))      # routine_days=0: off
     s = new_state()
