@@ -14,6 +14,10 @@ as train_models) with the SAME features as the current model; fit on the data be
 F1-best on the 365 days before the holdout (fit on the earlier part, choose threshold, then refit on all
 pre-holdout rows).  4) Compare candidate vs current model on the holdout with average precision (AP);
 promote per target only if candidate AP >= current AP.  A line per target goes to reports/retrain_log.csv.
+The deployed model is then refitted on ALL rows
+("model") and the pre-holdout candidate is kept inside the file as "guard_model". Next week's comparison uses the
+guard, which never saw the new holdout, so it stays fair.  Trade-off: the deployed copy has no independent exam;
+the guard is what gets examined, and the live log (live_check.py) is the independent exam of the deployed copy.
 The raw data folders are only appended to by the download scripts (data/raw, Baghdad, is never touched).
 
 Data: Open-Meteo.com (CC BY 4.0); METAR: Iowa Environmental Mesonet.
@@ -113,11 +117,14 @@ def main() -> int:
         val_ap, th = average_precision_score(y.iloc[val], pv), best_threshold(y.iloc[val], pv)
         m = MODELS["RandomForest"]().fit(x.iloc[pre], y.iloc[pre])
         cand_ap = average_precision_score(y.iloc[hold], m.predict_proba(x.iloc[hold])[:, 1])
-        cur_ap = average_precision_score(y.iloc[hold], cur["model"].predict_proba(x.iloc[hold])[:, 1])
+        ref = cur.get("guard_model", cur["model"])             # the guard copy never saw the newest rows
+        ref_until = cur.get("guard_trained_until", cur["trained_until"])
+        cur_ap = average_precision_score(y.iloc[hold], ref.predict_proba(x.iloc[hold])[:, 1])
 
-        unseen = pd.Timestamp(cur["trained_until"]) < hold_start
+        unseen = pd.Timestamp(ref_until) < hold_start
+        print(f"{tg}: comparing against the {'guard copy' if 'guard_model' in cur else 'deployed model'} (trained until {ref_until})")
         if not unseen:
-            print(f"NOTE {tg}: current model was trained until {cur['trained_until']}, which is inside the holdout "
+            print(f"NOTE {tg}: current model was trained until {ref_until}, which is inside the holdout "
                   f"(starts {hold_start}) - it has seen part of it, so the comparison favours it")
         n_pos = int(y.iloc[hold].sum())
         promote, why = decide_promote(n_pos, cand_ap, cur_ap)
@@ -126,8 +133,11 @@ def main() -> int:
               f"-> {'PROMOTE' if promote else 'keep current'}{' (dry run, not saved)' if promote and args.dry_run else ''}"
               f"   holdout positives {n_pos}   ({why})")
         if promote and not args.dry_run:
-            joblib.dump({"model": m, "features": feats, "threshold": th, "algorithm": "RandomForest", "val_ap": val_ap,
-                         "trained_until": str(t.iloc[pre].max()), "promoted_at": str(pd.Timestamp.now())},
+            allr = np.arange(len(t))[:-H]                       # all rows, last H dropped (targets look H h ahead)
+            full = MODELS["RandomForest"]().fit(x.iloc[allr], y.iloc[allr])
+            joblib.dump({"model": full, "guard_model": m, "features": feats, "threshold": th, "algorithm": "RandomForest",
+                         "val_ap": val_ap, "trained_until": str(t.iloc[allr].max()),
+                         "guard_trained_until": str(t.iloc[pre].max()), "promoted_at": str(pd.Timestamp.now())},
                         path, compress=3)
         rows.append([today, tg, round(cur_ap, 4), round(cand_ap, 4), (f"{promote}:{why}" if not promote and n_pos < MIN_POS else str(promote)) if not args.dry_run else "dry-run:" + str(promote),
                      len(pre), f"{hold_start:%Y-%m-%d}", unseen])
