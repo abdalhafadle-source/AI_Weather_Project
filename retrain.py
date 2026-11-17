@@ -45,6 +45,7 @@ for _s in (sys.stdout, sys.stderr):
         pass
 
 HOLDOUT_DAYS, VAL_DAYS = 90, 365
+MIN_POS = 50   # positive hours needed in the holdout for a fair comparison (~4-5 events)
 LOG_COLS = ["date", "target", "current_ap", "candidate_ap", "promoted", "rows_train", "holdout_start",
             "current_unseen_holdout"]
 
@@ -62,11 +63,25 @@ def update_data():
             sys.exit(f"{name} failed - stop (models untouched)")
 
 
+def decide_promote(n_pos, cand_ap, cur_ap):
+    """(promote?, reason). A holdout with too few positive hours (e.g. a dry summer) cannot rank two models."""
+    if n_pos < MIN_POS:
+        return False, f"holdout_pos {n_pos}<{MIN_POS}"
+    return cand_ap >= cur_ap, "ok" if cand_ap >= cur_ap else "candidate worse"
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
+    ap.add_argument("--self-test", action="store_true", help="test the promotion rule and exit")
     ap.add_argument("--dry-run", action="store_true", help="do everything but do not overwrite the models")
     ap.add_argument("--skip-download", action="store_true", help="reuse the data already on disk")
     args = ap.parse_args()
+    if args.self_test:
+        assert decide_promote(0, 0.0, 0.0)[0] is False
+        assert decide_promote(60, 0.5, 0.4)[0] is True and decide_promote(60, 0.4, 0.4)[0] is True
+        assert decide_promote(60, 0.3, 0.4)[0] is False
+        print("retrain.py self-test passed")
+        return 0
     if not args.skip_download:
         update_data()
 
@@ -104,15 +119,17 @@ def main() -> int:
         if not unseen:
             print(f"NOTE {tg}: current model was trained until {cur['trained_until']}, which is inside the holdout "
                   f"(starts {hold_start}) - it has seen part of it, so the comparison favours it")
-        promote = cand_ap >= cur_ap
+        n_pos = int(y.iloc[hold].sum())
+        promote, why = decide_promote(n_pos, cand_ap, cur_ap)
         print(f"{tg}: holdout {hold_start:%Y-%m-%d} .. {t.max():%Y-%m-%d} ({len(hold):,} h)   train rows {len(pre):,}   "
               f"val AP {val_ap:.3f}   threshold {th:.3f}   current AP {cur_ap:.3f}   candidate AP {cand_ap:.3f}   "
-              f"-> {'PROMOTE' if promote else 'keep current'}{' (dry run, not saved)' if promote and args.dry_run else ''}")
+              f"-> {'PROMOTE' if promote else 'keep current'}{' (dry run, not saved)' if promote and args.dry_run else ''}"
+              f"   holdout positives {n_pos}   ({why})")
         if promote and not args.dry_run:
             joblib.dump({"model": m, "features": feats, "threshold": th, "algorithm": "RandomForest", "val_ap": val_ap,
                          "trained_until": str(t.iloc[pre].max()), "promoted_at": str(pd.Timestamp.now())},
                         path, compress=3)
-        rows.append([today, tg, round(cur_ap, 4), round(cand_ap, 4), "dry-run:" + str(promote) if args.dry_run else promote,
+        rows.append([today, tg, round(cur_ap, 4), round(cand_ap, 4), (f"{promote}:{why}" if not promote and n_pos < MIN_POS else str(promote)) if not args.dry_run else "dry-run:" + str(promote),
                      len(pre), f"{hold_start:%Y-%m-%d}", unseen])
 
     log = Path("reports/retrain_log.csv")
