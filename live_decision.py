@@ -47,7 +47,7 @@ import numpy as np
 import pandas as pd
 import requests
 
-from decision import (HOUR, RAIN_NOW_MM, ROUTINE_DAYS, dump_state, load_state, new_state, routine_due, settle, step,
+from decision import (HOUR, LIVE_DUST_START, RAIN_NOW_MM, ROUTINE_DAYS, dump_state, load_state, new_state, routine_due, settle, step,
                       too_hot, write_atomic)
 from download_data import AIR_URL, AIR_VARS, FORECAST_VARS, fetch
 from download_extra import CENTRE_VARS, FCX_VARS
@@ -246,7 +246,7 @@ def main() -> int:
         safe = bool(ok[i] and p_rain[i] < th_r and p_dust[i] < th_d)
         rain = max(0 if pd.isna(rain) else rain, RAIN_NOW_MM if air_rain[i] else 0)
         action, reason = step(state, h.to_pydatetime(), rain, 0 if pd.isna(pm) else pm, safe,
-                              dust_obs=bool(dust_ob[i]), haze=bool(haze_ob[i]), can_clean=h == t, routine_days=ROUTINE_DAYS,
+                              dust_obs=bool(dust_ob[i]), haze=bool(haze_ob[i]), can_clean=h == t, routine_days=ROUTINE_DAYS, dust_start=LIVE_DUST_START,
                               block="device offline" if offline else "no airport data" if no_air[i] else "too hot" if too_hot(h, df["fc_temperature_2m"][i]) else None)
 
     if action == "clean":

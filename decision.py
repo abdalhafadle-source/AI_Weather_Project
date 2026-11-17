@@ -38,7 +38,8 @@ for _s in (sys.stdout, sys.stderr):
         pass
 
 RAIN_NOW_MM = 0.1        # an hour with at least this much rain = raining
-DUST_START = 200         # PM10 that starts a dust storm
+DUST_START = 200         # PM10 that starts a dust storm (thesis replay)
+LIVE_DUST_START = 150    # live system: the same 150 that "re-dirties panels" in the evaluation (item 15)
 DUST_END = 100           # storm ends when PM10 falls below this (hysteresis)
 RAIN_MIN_WAIT_H = 1      # hours to wait after rain ends
 DUST_MIN_WAIT_H = 3      # hours to wait after a storm ends
@@ -126,7 +127,7 @@ def settle(state, acked, t):
     return undo, job["t"]
 
 
-def step(state, t, rain_mm, pm10, safe, min_wait=None, dust_obs=False, haze=False, can_clean=True, block=None, routine_days=0):
+def step(state, t, rain_mm, pm10, safe, min_wait=None, dust_obs=False, haze=False, can_clean=True, block=None, routine_days=0, dust_start=None):
     mw = min_wait or {"rain": RAIN_MIN_WAIT_H, "dust": DUST_MIN_WAIT_H}
     # 1. rain now
     if rain_mm >= RAIN_NOW_MM:
@@ -137,7 +138,7 @@ def step(state, t, rain_mm, pm10, safe, min_wait=None, dust_obs=False, haze=Fals
         return "wait", "raining"
     # 2. dust storm with hysteresis
     # dust_obs = an airport (METAR) reports dust now: starts a storm, and keeps it going
-    if pm10 >= DUST_START or dust_obs:
+    if pm10 >= (dust_start or DUST_START) or dust_obs:
         state["storm"] = True
     elif state["storm"] and pm10 < DUST_END:
         state["storm"] = False
