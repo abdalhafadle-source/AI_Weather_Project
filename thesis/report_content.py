@@ -34,18 +34,21 @@ PART1 = [
           "من **4.8 سنة** من بيانات الحلة (42,120 ساعة) أن يتوقعا احتمال المطر واحتمال الغبار خلال **الساعات الست القادمة**. "
           "فوق النموذجين يعمل **عقل قرار (Decision Engine)** بقواعد أمان: لا تنظيف أثناء المطر أو الغبار، وانتظار بعد انتهاء الحدث، "
           "وغسلتان كحد أقصى يومياً."),
-    ("p", "في محاكاة على 22 شهراً لم يرها النموذج (كانون الثاني 2025 – تشرين الأول 2026) كانت **78.7%** من غسلات النظام الذكي مفيدة، "
-          "مقابل **59.0%** لقواعد التوقيت الثابت، مع **غسلات أقل بنسبة 38%** وغسلات مهدورة أقل بنسبة **68%**. "
-          "وبنفس البيانات تماماً، خفّض التعلّم الآلي الغسلات المهدورة بنسبة **27%** مقارنة بقاعدة ذكية مكتوبة يدوياً — "
-          "وهذا يثبت أن القيمة تأتي من التعلّم وليس من البيانات وحدها. "
+    ("p", "في محاكاة على 22 شهراً لم يرها النموذج (كانون الثاني 2025 – تشرين الأول 2026) كانت **78.7%** من غسلات النظام الذكي مفيدة "
+          "(مجال الثقة 95%: 69–86%)، مقابل **59.0%** لقواعد التوقيت الثابت، وهو فرق ذو دلالة إحصائية، مع **غسلات أقل بنسبة 38%** "
+          "وغسلات مهدورة أقل بنسبة **68%**. أما أمام القاعدتين الأبسط، الانتظار 5 ساعات (76.4%) وقاعدة النشرة الجوية (73.5%)، "
+          "فكان الذكاء الاصطناعي أفضل قليلاً لكن الفرق ليس ذا دلالة إحصائية بهذا العدد من الغسلات (89 غسلة). "
+          "الميزة الأوضح للتعلّم الآلي هي تقليل الغسلات المهدورة (أقل بـ **27%** من قاعدة النشرة)، ودمج تقارير المطارات الذي رفع النسبة من 69.4% إلى 78.7%. "
           "النظام يعمل الآن حياً على سيرفر خاص، يقرر كل ساعة، ويرسل أمره مشفّراً إلى جهاز ESP32 في الحقل، ويعيد تدريب نفسه كل أسبوع."),
     ("h3", "Abstract (English)"),
     ("p", "Dust soiling reduces PV output in Hilla, Iraq. We built a sensor-free decision system that tells an ESP32-driven mechanical "
           "cleaner WHEN to clean. Two Random Forest classifiers, trained on 4.8 years of hourly Hilla data (forecasts from four "
           "global weather centres, CAMS dust, and airport METAR reports), estimate the probability of rain and of dust within the "
           "next 6 hours; a rule-based safety layer turns these probabilities into a hourly command. In a 22-month out-of-sample "
-          "replay, 78.7% of AI-triggered cleanings were useful versus 59.0% for fixed-delay rules, with 38% fewer washes; with "
-          "identical inputs, machine learning cut wasted cleanings by 27% versus a hand-written forecast rule. The system runs live "
+          "replay, 78.7% of AI-triggered cleanings were useful (95% CI 69-86%) versus 59.0% for fixed-delay rules (significant), "
+          "with 38% fewer washes. Against simpler baselines - a fixed 5 h wait (76.4%) and a forecast rule (73.5%) - the AI was "
+          "slightly better but not significantly so with 89 cleanings; its clearest gains are 27% fewer wasted cleanings than the "
+          "forecast rule and the airport reports (69.4% -> 78.7%). The system runs live "
           "on a VPS with HTTPS, weekly guarded self-retraining, and daily backups."),
     ("pagebreak",),
 
