@@ -10,3 +10,4 @@ graphify-out/
 esp32/**/secrets.h
 handoff.local.md
 deploy/local_deploy.ps1
+esp32/libraries/
