@@ -136,12 +136,15 @@ def main() -> int:
         st, sf = new_state(), safe[name].to_numpy()
         events = missed = 0
         dirty = []
-        for i in idx:
+        pend_h = np.zeros(len(idx), bool)                     # hours with a real (non-routine) pending trigger
+        for k, i in enumerate(idx):
             t = times.iloc[i].to_pydatetime()
             before_p, before_in = len(st["pending"]), st["raining"] or st["storm"]
+            before_set = set(st["pending"])
             act, why = step(st, t, rain_in[i], pm_in[i], bool(sf[i]), mwait.get(name), dust_obs=bool(dust_ob[i]) and name != "AI_noMETAR", haze=bool(haze_ob[i]) and name != "AI_noMETAR",
                           block="too hot" if (not args.no_heat and too_hot(t, temp[i])) else None,
                           routine_days=0 if args.no_routine else ROUTINE_DAYS)
+            pend_h[k] = bool((before_set | st["pending"]) - {"routine"})
             if before_p == 0 and st["pending"]:
                 events += 1
             if before_p and not before_in and (st["raining"] or st["storm"]):
@@ -155,7 +158,7 @@ def main() -> int:
                                  outcome_cams="good" if truth_cams.iloc[i] else "wasted",
                                  during_event=bool(obs_rain[i] >= RAIN_MM or pm_in[i] >= DUST_START),
                                  p_rain=p_rain.iloc[i], p_dust=p_dust.iloc[i], hot=bool(too_hot(t, temp[i]))))
-        stats[name] = dict(events=events, missed=missed, dirty=np.array(dirty), cleans=st["cleans"])
+        stats[name] = dict(events=events, missed=missed, dirty=np.array(dirty), cleans=st["cleans"], pend_h=pend_h)
         # self-checks
         days = pd.Series(st["cleans"]).dt.date.value_counts() if st["cleans"] else pd.Series(dtype=int)
         assert (days <= MAX_PER_DAY).all(), f"{name}: more than {MAX_PER_DAY} cleans in a day"
@@ -207,6 +210,24 @@ def main() -> int:
     P("routine cleans (good): " + ", ".join(
         f"{n} {int(r.sum())} ({int((r & (dec.loc[dec['strategy'] == n, 'outcome'] == 'good')).sum())} good)"
         for n in STRATS for r in [dec.loc[dec["strategy"] == n, "trigger"].str.contains("routine")]))
+    # real events that never made a strategy hold a (non-routine) pending trigger from event start to end + 6 h
+    ev = pd.read_csv(d / "hilla_events.csv", parse_dates=["start", "end"])
+    ev = ev[(ev["start"] >= t0) & (ev["start"] <= t1)]
+    tt = times.iloc[idx].to_numpy()
+    for typ in ("rain", "dust"):
+        e = ev[ev["type"] == typ]
+        parts = []
+        for name in STRATS:
+            ph = stats[name]["pend_h"]
+            m = sum(not ph[(tt >= r.start.to_datetime64()) & (tt <= (r.end + 6 * HOUR).to_datetime64())].any() for r in e.itertuples())
+            parts.append(f"{name} {m}/{len(e)}")
+        P(f"never triggered ({typ} events, missed/total): " + ", ".join(parts))
+    day = df.iloc[idx].assign(d=lambda x: x["time"].dt.date).groupby("d")
+    wet = day["obs_precipitation"].max() >= RAIN_MM
+    wet5 = day["obs_precipitation"].sum() >= 0.5
+    sig = day["fc_precipitation"].max() >= RAIN_MM
+    P(f"ERA5 rainy days (obs >= {RAIN_MM} in any hour): {int(wet.sum())}, no forecast signal (fc >= {RAIN_MM}): {int((wet & ~sig).sum())}; "
+      f"project definition (day sum >= 0.5 mm): {int(wet5.sum())}, no forecast signal: {int((wet5 & ~sig).sum())}")
     assert args.no_heat or not dec["hot"].any(), "a clean inside the heat window with the rule ON"
 
     # charts
