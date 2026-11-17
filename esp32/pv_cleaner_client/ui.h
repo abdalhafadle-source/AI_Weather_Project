@@ -102,12 +102,40 @@ static bool confirmOpen = false, busy = false, lastRun = false;
 static char washMsg[44] = "";
 static uint32_t washMsgUntil = 0;
 
-static void txt(const char* s, int x, int y, const lgfx::IFont* f, uint32_t col, textdatum_t d = textdatum_t::middle_left) {
+static void txt(const char* s, int x, int y, const lgfx::IFont* f, uint32_t col, textdatum_t d = textdatum_t::middle_left, float sz = 1.0f) {
   tft.setFont(f);
+  tft.setTextSize(sz);
   tft.setTextColor(col);
   tft.setTextDatum(d);
   tft.drawString(s, x, y);
+  tft.setTextSize(1.0f);
 }
+// centered text wrapped by words inside maxW pixels; returns the next free y
+static int wrapTxt(const char* s, int cx, int y, int maxW, uint32_t col, float sz = 0.85f, int step = 15) {
+  char line[48] = "";
+  const char* p = s;
+  while (*p) {
+    const char* e = strchr(p, ' ');
+    int wl = e ? (int)(e - p) : (int)strlen(p);
+    char t[48];
+    snprintf(t, sizeof t, "%s%s%.*s", line, line[0] ? " " : "", wl, p);
+    tft.setFont(F9);
+    tft.setTextSize(sz);
+    int w = tft.textWidth(t);
+    tft.setTextSize(1.0f);
+    if (line[0] && w > maxW) {
+      txt(line, cx, y, F9, col, textdatum_t::middle_center, sz);
+      y += step;
+      snprintf(line, sizeof line, "%.*s", wl, p);
+    } else snprintf(line, sizeof line, "%s", t);
+    p += wl + (e ? 1 : 0);
+  }
+  if (line[0]) { txt(line, cx, y, F9, col, textdatum_t::middle_center, sz); y += step; }
+  return y;
+}
+// 12-hour clock: "4:41 PM" and "4 PM"
+static void fmt12(char* o, size_t n, int h, int m) { snprintf(o, n, "%d:%02d %s", h % 12 ? h % 12 : 12, m, h < 12 ? "AM" : "PM"); }
+static void fmtHour12(char* o, size_t n, int h) { snprintf(o, n, "%d %s", h % 12 ? h % 12 : 12, h < 12 ? "AM" : "PM"); }
 static void card(int x, int y, int w, int h) {
   tft.fillSmoothRoundRect(x, y, w, h, 10, C_LINE);
   tft.fillSmoothRoundRect(x + 1, y + 1, w - 2, h - 2, 9, C_CARD);
@@ -186,8 +214,11 @@ static void drawTop() {
   struct tm t;
   if (busy) txt("Updating...", 430, 15, F9, C_DUST, textdatum_t::middle_right);
   else {
-    if (localTm(t)) snprintf(b, sizeof b, "%s %d %s  %02d:%02d", DOW[t.tm_wday], t.tm_mday, MON[t.tm_mon], t.tm_hour, t.tm_min);
-    else snprintf(b, sizeof b, "--:--");
+    if (localTm(t)) {
+      char tm12[12];
+      fmt12(tm12, sizeof tm12, t.tm_hour, t.tm_min);
+      snprintf(b, sizeof b, "%s %d %s  %s", DOW[t.tm_wday], t.tm_mday, MON[t.tm_mon], tm12);
+    } else snprintf(b, sizeof b, "--:--");
     txt(b, 430, 15, F9, C_DIM, textdatum_t::middle_right);
   }
   int lit = 0;
@@ -213,7 +244,7 @@ static void drawNav() {
 
 // ---------- Status screen ----------
 static void arc(int cx, int cy, float p, uint32_t col) {  // progress ring starting at 12 o'clock
-  const int r0 = 60, r1 = 70;
+  const int r0 = 64, r1 = 76;
   if (p >= 0.999f) { tft.fillArc(cx, cy, r0, r1, 0, 360, col); return; }
   if (p <= 0) return;
   float a1 = 270 + 360 * p;
@@ -221,9 +252,9 @@ static void arc(int cx, int cy, float p, uint32_t col) {  // progress ring start
   else { tft.fillArc(cx, cy, r0, r1, 270, 360, col); tft.fillArc(cx, cy, r0, r1, 0, a1 - 360, col); }
 }
 static void drawRing() {
-  const int cx = 95, cy = 152;
-  tft.fillRect(cx - 78, cy - 78, 156, 156, C_BG);
-  tft.fillArc(cx, cy, 60, 70, 0, 360, C_TRACK);
+  const int cx = 98, cy = 152;
+  tft.fillRect(cx - 84, cy - 84, 168, 168, C_BG);
+  tft.fillArc(cx, cy, 64, 76, 0, 360, C_TRACK);
   char big[16], sub[26], b[24];
   uint32_t col;
   float p = 1;
@@ -248,19 +279,22 @@ static void drawRing() {
     txt(b, cx, cy + 14, FB18, C_FG, textdatum_t::middle_center);
     return;
   }
-  txt("AI decision", cx, cy - 34, F9, C_DIM, textdatum_t::middle_center);
+  txt("AI decision", cx, cy - 36, F9, C_DIM, textdatum_t::middle_center, 0.8f);
   tft.setFont(FB18);
-  txt(big, cx, cy - 4, tft.textWidth(big) <= 104 ? FB18 : FB12, col, textdatum_t::middle_center);
+  txt(big, cx, cy - 6, tft.textWidth(big) <= 100 ? FB18 : FB12, col, textdatum_t::middle_center);
   // the sub line is up to 22 chars: shrink to two short lines when it does not fit the ring
   tft.setFont(F9);
-  if (tft.textWidth(sub) <= 108) txt(sub, cx, cy + 28, F9, C_DIM, textdatum_t::middle_center);
+  tft.setTextSize(0.8f);
+  int sw = tft.textWidth(sub);
+  tft.setTextSize(1.0f);
+  if (sw <= 100) txt(sub, cx, cy + 28, F9, C_DIM, textdatum_t::middle_center, 0.8f);
   else {
     char* sp = strchr(sub + strlen(sub) / 2 - 3, ' ');
-    if (!sp) { char cut[16]; snprintf(cut, sizeof cut, "%.12s", sub); txt(cut, cx, cy + 28, F9, C_DIM, textdatum_t::middle_center); }
+    if (!sp) { char cut[16]; snprintf(cut, sizeof cut, "%.12s", sub); txt(cut, cx, cy + 28, F9, C_DIM, textdatum_t::middle_center, 0.8f); }
     else {
       *sp = 0;
-      txt(sub, cx, cy + 22, F9, C_DIM, textdatum_t::middle_center);
-      txt(sp + 1, cx, cy + 40, F9, C_DIM, textdatum_t::middle_center);
+      txt(sub, cx, cy + 24, F9, C_DIM, textdatum_t::middle_center, 0.8f);
+      txt(sp + 1, cx, cy + 40, F9, C_DIM, textdatum_t::middle_center, 0.8f);
     }
   }
 }
@@ -324,8 +358,8 @@ static void drawForecast() {
     tft.fillRoundRect(x + 2, base - hr, 7, hr, hr >= 5 ? 2 : 0, C_RAIN);
     tft.fillRoundRect(x + 10, base - hd, 7, hd, hd >= 5 ? 2 : 0, C_DUST);
     if (i % 4 == 0) {
-      char b[8];
-      snprintf(b, sizeof b, "%02dh", fch[i].hour);
+      char b[10];
+      fmtHour12(b, sizeof b, fch[i].hour);
       txt(b, x + bw / 2, base + 13, F9, i == cur ? C_FG : C_DIM, textdatum_t::middle_center);
     }
   }
@@ -336,7 +370,9 @@ static void drawForecast() {
   char b[56] = "No rain above the alarm level in 24 h";
   for (int i = 0; i < fcN && uc.thRain >= 0; i++)
     if (fch[i].r >= uc.thRain) {
-      snprintf(b, sizeof b, "Rain likely around %02dh%s", fch[i].hour, !have ? "" : fch[i].day == t.tm_mday ? " today" : " tomorrow");
+      char h[10];
+      fmtHour12(h, sizeof h, fch[i].hour);
+      snprintf(b, sizeof b, "Rain likely around %s%s", h, !have ? "" : fch[i].day == t.tm_mday ? " today" : " tomorrow");
       break;
     }
   txt(b, 14, 258, F9, C_DIM);
@@ -351,7 +387,9 @@ static void lastWashText(char* o, size_t n) {
   time_t d = (time_t)e + 3 * 3600;
   struct tm tm;
   gmtime_r(&d, &tm);
-  snprintf(o, n, "%d %s  %02d:%02d", tm.tm_mday, MON[tm.tm_mon], tm.tm_hour, tm.tm_min);
+  char h[12];
+  fmt12(h, sizeof h, tm.tm_hour, tm.tm_min);
+  snprintf(o, n, "%d %s %s", tm.tm_mday, MON[tm.tm_mon], h);
 }
 static void drawWashRight() {
   tft.fillRect(254, 40, 226, 230, C_BG);
@@ -363,10 +401,9 @@ static void drawWashRight() {
     txt(b, 364, 122, FB18, C_FG, textdatum_t::middle_center);
   } else {
     button(262, 60, 204, 64, "Wash now", true);
-    txt("Runs brush and pump for 1 minute.", 364, 142, F9, C_DIM, textdatum_t::middle_center);
-    txt("Daily limits still apply.", 364, 160, F9, C_DIM, textdatum_t::middle_center);
+    wrapTxt("Runs brush and pump for 1 minute. Daily limits still apply.", 364, 144, 196, C_DIM);
   }
-  if (washMsg[0]) txt(washMsg, 364, 196, F9, C_BAD, textdatum_t::middle_center);
+  if (washMsg[0]) wrapTxt(washMsg, 364, 204, 196, C_BAD, 0.9f, 17);
 }
 static void drawConfirm() {
   card(90, 80, 300, 150);
