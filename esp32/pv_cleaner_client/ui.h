@@ -374,7 +374,6 @@ static void drawForecast() {
   bool have = localTm(t);
   int cur = -1;
   for (int i = 0; i < fcN && have; i++) if (fch[i].day == t.tm_mday && fch[i].hour == t.tm_hour) cur = i;
-  if (cur >= 0) tft.fillRect(x0 + cur * bw, 62, bw, H + 22, C_HI);
   tft.drawFastHLine(14, base, 452, C_LINE);
   for (int i = 0; i < fcN; i++) {
     int x = x0 + i * bw;
@@ -391,20 +390,6 @@ static void drawForecast() {
     int y = base - (int)(uc.thRain * H);
     for (int x = 14; x < 466; x += 8) tft.drawFastHLine(x, y, 4, C_RAIN);
   }
-  char b[72] = "No rain above the alarm level in 24 h", h[10], h2[10];
-  for (int i = 0; i < fcN && uc.thRain >= 0; i++)
-    if (fch[i].r >= uc.thRain) {
-      fmtHour12(h, sizeof h, fch[i].hour);
-      snprintf(b, sizeof b, "Rain likely around %s%s", h, !have ? "" : fch[i].day == t.tm_mday ? " today" : " tomorrow");
-      break;
-    }
-  txt(b, 14, 244, F9, C_DIM);
-  int ir = 0, id = 0;
-  for (int i = 1; i < fcN; i++) { if (fch[i].r > fch[ir].r) ir = i; if (fch[i].d > fch[id].d) id = i; }
-  fmtHour12(h, sizeof h, fch[ir].hour);
-  fmtHour12(h2, sizeof h2, fch[id].hour);
-  snprintf(b, sizeof b, "Highest: rain %d%% at %s, dust %d%% at %s", (int)(fch[ir].r * 100 + 0.5f), h, (int)(fch[id].d * 100 + 0.5f), h2);
-  txt(b, 14, 261, F9, C_FG);
 }
 
 // ---------- Wash screen ----------
