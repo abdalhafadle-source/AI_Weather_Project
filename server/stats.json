@@ -1,0 +1,12 @@
+{
+ "useful_cleans_pct": 78.7,
+ "useful_cleans_rules_pct": 59.0,
+ "fewer_washes_pct": 38,
+ "wasted_less_vs_rule_pct": 27,
+ "rain_detect_ai_pct": 71,
+ "rain_detect_forecast_pct": 57,
+ "algorithm": "Random Forest",
+ "features": 58,
+ "years_of_data": 4.8,
+ "storms_missed_by_cams_pct": 77
+}

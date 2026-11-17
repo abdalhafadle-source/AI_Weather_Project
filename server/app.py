@@ -33,6 +33,10 @@ NO_STORE = {"Cache-Control": "no-store"}
 STATS = {"useful_cleans_pct": 78.7, "useful_cleans_rules_pct": 59.0, "fewer_washes_pct": 38, "wasted_less_vs_rule_pct": 27,
          "rain_detect_ai_pct": 71, "rain_detect_forecast_pct": 57, "algorithm": "Random Forest", "features": 58,
          "years_of_data": 4.8, "storms_missed_by_cams_pct": 77}
+try:  # the page numbers live in stats.json; the dict above is the fallback
+    STATS = json.loads((Path(__file__).parent / "stats.json").read_text(encoding="utf-8"))
+except (OSError, ValueError):
+    pass
 _cache = {}
 
 
