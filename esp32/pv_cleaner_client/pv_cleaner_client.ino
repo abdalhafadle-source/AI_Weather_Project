@@ -3,6 +3,11 @@
 // every hour, and when it says "clean" (with a command_id not run before) switch the brush + pump relays on.
 //
 // Board: ESP32 (Arduino core). Libraries are bundled in this folder (ArduinoJson, WiFiManager by tzapu, MIT).
+// Screen: 3.5" 480x320 touch screen (ILI9488 + XPT2046) drawn by ui.h with LovyanGFX 1.3.0, which lives in
+// esp32/libraries (not in git): arduino-cli lib download LovyanGFX, then unzip it there. Wiring (SPI, VSPI):
+//   screen: SCK 18, MOSI 23, CS 15, DC 2, RST 4, SDO not connected, LED on 3V3
+//   touch:  T_CLK 18, T_DIN 23, T_DO 19, T_CS 5, T_IRQ 34
+// First start (or finger held on the screen for the first 3 s): "Touch the arrows to calibrate", saved in flash.
 // Wi-Fi is set from a phone, no re-upload needed (WiFiManager): when the saved network is not reachable, the
 // ESP32 opens its own network "Hilla-PV-Setup" (password PORTAL_PASS in secrets.h) for 3 minutes; join it,
 // pick the new network and type its password. Hold the BOOT button 3 s to open it on purpose.
@@ -54,6 +59,7 @@ Preferences prefs;
 unsigned long lastPoll = 0, runStart = 0, runMs = 0;
 bool running = false, polledOnce = false;
 int wifiFails = 0;
+#include "ui.h"  // touch screen: needs the globals above
 
 // connect to the saved network; if that fails, open the setup network for PORTAL_S seconds (relays stay OFF:
 // only called while not cleaning). force = open the setup network even if the saved one works.
@@ -61,9 +67,11 @@ void wifiSetup(bool force) {
   WiFiManager wm;
   wm.setConfigPortalTimeout(PORTAL_S);
   wm.setConnectTimeout(20);
+  uiWifiScreen(force);
   Serial.printf("Wi-Fi setup: if no network, join \"%s\" from a phone\n", PORTAL_NAME);
   bool ok = force ? wm.startConfigPortal(PORTAL_NAME, PORTAL_PASS) : wm.autoConnect(PORTAL_NAME, PORTAL_PASS);
   Serial.println(ok ? "Wi-Fi connected" : "Wi-Fi setup timed out -> will try again later");
+  uiWifiDone();
 }
 
 void relays(bool on) {
@@ -134,9 +142,11 @@ void poll() {
     ok = fetchCommand(doc);
   }
   if (!ok) {
+    uiPollResult(false);
     Serial.println("no command -> do nothing");
     return;
   }
+  uiStoreCommand(doc);
   const char* action = doc["action"] | "wait";
   const char* id = doc["command_id"] | "";
   const char* reason = doc["reason"] | "";
@@ -170,6 +180,16 @@ void poll() {
   sendAck(id);
 }
 
+// poll with "Updating..." on the screen, then the extra status request (forecast bars) for the screen
+void pollNow() {
+  polledOnce = true;
+  lastPoll = millis();
+  uiBusy(true);
+  poll();
+  uiAfterPoll();
+  uiBusy(false);
+}
+
 void setup() {
   Serial.begin(115200);
   digitalWrite(RELAY_BRUSH, !RELAY_ON);  // set OFF level before enabling the pins
@@ -179,6 +199,7 @@ void setup() {
   relays(false);
   prefs.begin("pvclean", false);
   pinMode(SETUP_BUTTON, INPUT_PULLUP);
+  uiBegin();  // relays are already OFF here
   WiFi.mode(WIFI_STA);
   wifiSetup(false);  // saved network, or the setup network for 3 min
   configTime(0, 0, "pool.ntp.org", "time.google.com");  // UTC clock from the internet (free)
@@ -202,7 +223,8 @@ void loop() {
       wifiSetup(false);  // network changed or gone: let the owner pick a new one from a phone
     }
     if (WiFi.status() == WL_CONNECTED) wifiFails = 0;
-    poll();
+    pollNow();
   }
-  delay(1000);
+  uiTick();  // touch every ~20 ms, small redraw once a second
+  delay(20);
 }
