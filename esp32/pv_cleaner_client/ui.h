@@ -206,26 +206,28 @@ static const char* routineText(char* o, size_t n, uint32_t* col) {
 }
 
 // ---------- top bar and navigation ----------
-static void drawTop() {
-  tft.fillRect(0, 0, 480, TOP_H - 1, C_BG);
-  tft.drawFastHLine(0, TOP_H - 1, 480, C_LINE);
-  txt("HILLA PV", 14, 15, FB9, C_FG);
-  char b[32];
+static void drawTop(bool force = false) {
+  static char shown[40] = "";
+  char b[32], key[40];
   struct tm t;
-  if (busy) txt("Updating...", 430, 15, F9, C_DUST, textdatum_t::middle_right);
-  else {
-    if (localTm(t)) {
-      char tm12[12];
-      fmt12(tm12, sizeof tm12, t.tm_hour, t.tm_min);
-      snprintf(b, sizeof b, "%s %d %s  %s", DOW[t.tm_wday], t.tm_mday, MON[t.tm_mon], tm12);
-    } else snprintf(b, sizeof b, "--:--");
-    txt(b, 430, 15, F9, C_DIM, textdatum_t::middle_right);
-  }
+  if (busy) snprintf(b, sizeof b, "Updating...");
+  else if (localTm(t)) {
+    char tm12[12];
+    fmt12(tm12, sizeof tm12, t.tm_hour, t.tm_min);
+    snprintf(b, sizeof b, "%s %d %s  %s", DOW[t.tm_wday], t.tm_mday, MON[t.tm_mon], tm12);
+  } else snprintf(b, sizeof b, "--:--");
   int lit = 0;
   if (WiFi.status() == WL_CONNECTED) {
     int r = WiFi.RSSI();
     lit = r > -60 ? 4 : r > -70 ? 3 : r > -80 ? 2 : 1;
   }
+  snprintf(key, sizeof key, "%s|%d", b, lit);
+  if (!force && !strcmp(key, shown)) return;  // nothing changed: do not repaint (no blink)
+  snprintf(shown, sizeof shown, "%s", key);
+  tft.fillRect(0, 0, 480, TOP_H - 1, C_BG);
+  tft.drawFastHLine(0, TOP_H - 1, 480, C_LINE);
+  txt("HILLA PV", 14, 15, FB9, C_FG);
+  txt(b, 430, 15, F9, busy ? C_DUST : C_DIM, textdatum_t::middle_right);
   for (int i = 0; i < 4; i++) {
     int h = 4 + i * 3;
     tft.fillRect(442 + i * 6, 22 - h, 4, h, i < lit ? C_OK : C_TRACK);
@@ -508,7 +510,7 @@ static void drawDevice() {
 // ---------- drawing control ----------
 static void uiFull() {
   tft.fillRect(0, TOP_H, 480, NAV_Y - TOP_H, C_BG);
-  drawTop();
+  drawTop(true);
   drawNav();
   switch (scr) {
     case SCR_STATUS: drawStatus(); break;
@@ -523,7 +525,10 @@ static void uiPeriodic() {  // once a second: only the small parts that change
   else if (scr == SCR_WASH) {
     if (washMsg[0] && millis() > washMsgUntil) { washMsg[0] = 0; if (!confirmOpen) drawWashRight(); }
     else if (running && !confirmOpen) drawWashRight();
-  } else if (scr == SCR_DEVICE) drawDevRows(false);
+  } else if (scr == SCR_DEVICE) {
+    static uint8_t n = 0;
+    if (running || ++n >= 30) { n = 0; drawDevRows(false); }
+  }
 }
 static void uiScreenMsg(const char* a, const char* b) {
   tft.fillScreen(C_BG);
@@ -635,7 +640,7 @@ void uiAfterPoll() {
 }
 void uiBusy(bool b) {
   busy = b;
-  drawTop();
+  drawTop(true);
   if (!b) uiFull();
 }
 
