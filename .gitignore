@@ -8,3 +8,4 @@ graphify-out/cache/
 graphify-out/
 .claude/
 esp32/**/secrets.h
+handoff.local.md
