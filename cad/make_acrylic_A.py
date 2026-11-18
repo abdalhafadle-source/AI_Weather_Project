@@ -9,8 +9,8 @@ Usage (needs: pip install shapely ezdxf matplotlib):
 Box: front panel + 4 walls joined by finger joints (glue them with acrylic cement), a flat back panel, and
 4 M3 brass standoffs (length = DEPTH - 2*T) in the inner corners. M3 screws go through the front panel into
 the standoffs and through the back panel into them: the back opens for the battery, the box is clamped.
-The screen module is screwed behind the front panel; its touch surface shows through an open window
-(resistive touch does not work through acrylic).
+The screen module is screwed behind the front panel (one M3 nut as spacer on each screw) and its glass
+passes through the window, standing GLASS_PROUD mm out of the front (resistive touch needs a bare surface).
 
 Outputs (cad/acrylic_A/):
     acrylic_A_all.dxf   every panel, layer CUT = cut lines, layer NOTES = names (do not cut)
@@ -41,11 +41,16 @@ MOD_W, MOD_H = 98.3, 56.3  # measured 2026-11-18: screen module board (ILI9488 3
 MOD_HOLE_IN_X = 3.1        # measured: hole centre from the SHORT edge (rim 1.60 + radius 1.5)
 MOD_HOLE_IN_Y = 3.4        # measured: hole centre from the LONG edge (rim 1.90 + radius 1.5)
 MOD_HOLE_D = 3.2           # board holes are 3.0; M3 clearance
-# glass measured 85.55 x 55.60, centred on the board (6.55 mm each side). The window is a little smaller than
-# the glass, so the glass rests on the acrylic, and larger than the picture (73.4 x 49.0) with ~2.5 mm spare
-WIN_W, WIN_H = 79.0, 52.5
+# glass measured 85.55 x 55.60, centred on the board. The glass passes THROUGH the window and comes out
+# flush with the front: window = glass + 0.3 mm play each side, almost square corners (the glass has square corners)
+GLASS_W, GLASS_H = 85.55, 55.60
+WIN_PLAY = 0.3
+WIN_W, WIN_H = GLASS_W + 2 * WIN_PLAY, GLASS_H + 2 * WIN_PLAY
+WIN_R = 0.5
 WIN_OFF_X = 0.0            # glass centred on the board
-GLASS = 5.8                # measured: glass top above the board = spacer height between board and front panel
+GLASS = 5.8                # measured: glass top above the board
+SPACER = 2.4               # between the board and the acrylic: one M3 nut (2.4 mm) per screw
+GLASS_PROUD = GLASS - T - SPACER   # how far the glass stands out of the front (0.4 mm)
 CORNER_HOLE = 6.2          # standoff holes, distance from the outer edges (M3 hex standoff, 5 mm across flats)
 USB_W, USB_H = 9.5, 3.8    # USB-C slot
 USB_FROM_BACK = 5.0        # USB-C centre, mm in front of the back panel's inner face
@@ -116,7 +121,7 @@ def build():
                  for dy in (MOD_HOLE_IN_Y, MOD_H - MOD_HOLE_IN_Y)]
 
     front = fingers(L, H, {"b": ("F", N_LEN), "t": ("F", N_LEN), "l": ("F", N_HEI), "r": ("F", N_HEI)})
-    cuts = [rrect(L / 2 + WIN_OFF_X, H / 2, WIN_W, WIN_H, 2.0)] + [hole(x, y, MOD_HOLE_D) for x, y in mod_holes]
+    cuts = [rrect(L / 2 + WIN_OFF_X, H / 2, WIN_W, WIN_H, WIN_R)] + [hole(x, y, MOD_HOLE_D) for x, y in mod_holes]
     cuts += [hole(x, y, 3.2) for x, y in corner]
     front = front.difference(unary_union(cuts))
 
