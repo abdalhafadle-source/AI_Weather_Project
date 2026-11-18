@@ -37,12 +37,16 @@ KERF = 0.10                # laser kerf (line width); outlines grow and holes sh
 LENGTH, HEIGHT, DEPTH = 118.0, 74.0, 36.0   # outer box size; DEPTH - 2T = standoff length (30 mm)
 N_LEN, N_HEI, N_DEP = 11, 7, 3              # finger counts per edge (odd numbers)
 
-MOD_W, MOD_H = 98.0, 56.0  # MEASURE: screen module board (ILI9488 3.5")
-MOD_HOLE_INSET = 3.5       # MEASURE: centre of each board corner hole from the board edges
-MOD_HOLE_D = 3.2           # M3
-WIN_W, WIN_H = 75.5, 51.0  # MEASURE: visible screen (73.4 x 49.0) + about 1 mm each side
-WIN_OFF_X = 2.0            # MEASURE: window centre right of the board centre (the pin header side is wider)
-CORNER_HOLE = 6.5          # standoff holes, distance from the outer edges
+MOD_W, MOD_H = 98.3, 56.3  # measured 2026-11-18: screen module board (ILI9488 3.5")
+MOD_HOLE_IN_X = 3.1        # measured: hole centre from the SHORT edge (rim 1.60 + radius 1.5)
+MOD_HOLE_IN_Y = 3.4        # measured: hole centre from the LONG edge (rim 1.90 + radius 1.5)
+MOD_HOLE_D = 3.2           # board holes are 3.0; M3 clearance
+# glass measured 85.55 x 55.60, centred on the board (6.55 mm each side). The window is a little smaller than
+# the glass, so the glass rests on the acrylic, and larger than the picture (73.4 x 49.0) with ~2.5 mm spare
+WIN_W, WIN_H = 79.0, 52.5
+WIN_OFF_X = 0.0            # glass centred on the board
+GLASS = 5.8                # measured: glass top above the board = spacer height between board and front panel
+CORNER_HOLE = 6.2          # standoff holes, distance from the outer edges (M3 hex standoff, 5 mm across flats)
 USB_W, USB_H = 9.5, 3.8    # USB-C slot
 USB_FROM_BACK = 5.0        # USB-C centre, mm in front of the back panel's inner face
 SWITCH_W, SWITCH_L, SWITCH_HOLES = 4.0, 8.5, 15.0   # mini slide switch: slot and its two M2 holes
@@ -108,8 +112,8 @@ def build():
     corner = [(CORNER_HOLE, CORNER_HOLE), (L - CORNER_HOLE, CORNER_HOLE),
               (CORNER_HOLE, H - CORNER_HOLE), (L - CORNER_HOLE, H - CORNER_HOLE)]
     mx, my = (L - MOD_W) / 2, (H - MOD_H) / 2   # screen board centred in the box
-    mod_holes = [(mx + MOD_HOLE_INSET, my + MOD_HOLE_INSET), (mx + MOD_W - MOD_HOLE_INSET, my + MOD_HOLE_INSET),
-                 (mx + MOD_HOLE_INSET, my + MOD_H - MOD_HOLE_INSET), (mx + MOD_W - MOD_HOLE_INSET, my + MOD_H - MOD_HOLE_INSET)]
+    mod_holes = [(mx + dx, my + dy) for dx in (MOD_HOLE_IN_X, MOD_W - MOD_HOLE_IN_X)
+                 for dy in (MOD_HOLE_IN_Y, MOD_H - MOD_HOLE_IN_Y)]
 
     front = fingers(L, H, {"b": ("F", N_LEN), "t": ("F", N_LEN), "l": ("F", N_HEI), "r": ("F", N_HEI)})
     cuts = [rrect(L / 2 + WIN_OFF_X, H / 2, WIN_W, WIN_H, 2.0)] + [hole(x, y, MOD_HOLE_D) for x, y in mod_holes]

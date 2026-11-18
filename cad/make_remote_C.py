@@ -21,23 +21,26 @@ from pathlib import Path
 import cadquery as cq
 
 # ---------------- parameters ----------------
-W, LEN = 70.0, 176.0        # outer width and length
+W, LEN = 70.0, 180.0        # outer width and length (180: room for the 18650 below the screen board)
 D_TOP, D_GRIP = 22.0, 30.0  # depth of the screen part and of the grip
 WALL = 2.0
 GRIP_Y0, GRIP_Y1 = 4.0, 80.0   # grip (deeper part) along the length
 GRIP_W = 64.0
 SPLIT_Z = 10.0              # front shell = z < SPLIT_Z, back cover = z > SPLIT_Z
-WIN_W, WIN_H = 51.0, 75.5   # MEASURE: visible screen (49.0 x 73.4) + about 1 mm each side
-WIN_TOP_MARGIN = 12.0
-MOD_W, MOD_H = 56.0, 98.0   # MEASURE: screen module board, portrait
-MOD_BELOW_WIN = 14.0        # MEASURE: board edge below the window (pin-header side)
-MOD_HOLE_INSET = 3.5        # MEASURE: board corner hole centre from the board edges
-GLASS = 4.5                 # MEASURE: glass + touch film height above the board (standoff height)
+# measured 2026-11-18: board 98.3 x 56.3, glass 85.55 x 55.60 centred on it, glass 5.8 mm above the board,
+# holes 3.0 mm with their rim 1.60 from the short edge and 1.90 from the long edge
+MOD_W, MOD_H = 56.3, 98.3   # screen module board, portrait
+WIN_W, WIN_H = 52.5, 79.0   # smaller than the glass (it rests on the shell), larger than the picture 49.0 x 73.4
+WIN_TOP_MARGIN = 13.0
+MOD_BELOW_WIN = (MOD_H - WIN_H) / 2   # glass and window centred on the board
+MOD_HOLE_IN_X = 3.4         # hole centre from the LONG edge (portrait: left / right)
+MOD_HOLE_IN_Y = 3.1         # hole centre from the SHORT edge (portrait: top / bottom)
+GLASS = 5.8                 # standoff height: glass top above the board
 BUTTON_D = 12.5             # optional quick-wash push button (0 = none)
 USB_W, USB_H, USB_Z = 9.5, 3.8, 15.0
 SWITCH_W, SWITCH_L, SWITCH_HOLES, SWITCH_Y, SWITCH_Z = 4.0, 8.5, 15.0, 140.0, 6.0
-SCREWS = [(-30.5, 120.0), (30.5, 120.0), (-26.5, 12.0), (26.5, 12.0)]   # M2.5 screw posts
-BOSS_D, PILOT_D, CLEAR_D = 5.4, 2.2, 2.8
+SCREWS = [(-31.0, 120.0), (31.0, 120.0), (-26.5, 12.0), (26.5, 12.0)]   # M2.5 screw posts (top pair beside the board)
+BOSS_D, PILOT_D, CLEAR_D = 5.0, 2.2, 2.8
 
 OUT = Path(__file__).resolve().parent / "remote_C"
 
@@ -85,8 +88,8 @@ def cut_features(shell):
 def screen_posts(win_cy):
     """Standoffs on the inside of the front face for the screen board (height = GLASS)."""
     y0 = win_cy - WIN_H / 2 - MOD_BELOW_WIN
-    pts = [(sx * (MOD_W / 2 - MOD_HOLE_INSET), y) for sx in (-1, 1)
-           for y in (y0 + MOD_HOLE_INSET, y0 + MOD_H - MOD_HOLE_INSET)]
+    pts = [(sx * (MOD_W / 2 - MOD_HOLE_IN_X), y) for sx in (-1, 1)
+           for y in (y0 + MOD_HOLE_IN_Y, y0 + MOD_H - MOD_HOLE_IN_Y)]
     posts = (cq.Workplane("XY").workplane(offset=WALL).pushPoints(pts).circle(3.0).extrude(GLASS)
              .faces(">Z").workplane().pushPoints(pts).hole(PILOT_D, GLASS))
     return posts, y0
