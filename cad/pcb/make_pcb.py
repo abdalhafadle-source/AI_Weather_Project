@@ -33,7 +33,7 @@ import matplotlib.pyplot as plt
 from matplotlib.font_manager import FontProperties
 from matplotlib.path import Path as MPath
 from matplotlib.textpath import TextPath
-from shapely.affinity import scale as sscale, translate
+from shapely.affinity import rotate, scale as sscale, translate
 from shapely.geometry import LineString, Point, Polygon, box
 from shapely.ops import unary_union
 
@@ -46,7 +46,7 @@ for _s in (sys.stdout, sys.stderr):
 OUT = Path(__file__).resolve().parent / "out"
 
 # ---------------- board and parts (mm, seen from the PARTS side, origin bottom-left) ----------------
-W, L = 56.0, 106.0           # board size
+W, L = 56.0, 131.0           # board size
 PITCH = 2.54
 ROW = 22.85                  # measured: ESP32 row centre to row centre
 PAD_D, HOLE_D = 1.9, 0.9     # header / ESP32 pads
@@ -56,7 +56,7 @@ PIT = 0.5                    # etched pit in each pad centre (drill guide)
 
 CX = W / 2
 XL, XR = CX - ROW / 2, CX + ROW / 2      # ESP32 left / right pin rows
-YJ = L - 6.0                             # screen header row
+YJ = L - 12.0                            # screen header row (pin names above it)
 YT = YJ - 18.0                           # ESP32 top pin (USB end towards the screen header)
 YB = YT - 18 * PITCH                     # ESP32 bottom pin
 
@@ -64,6 +64,18 @@ YB = YT - 18 * PITCH                     # ESP32 bottom pin
 LEFT = ["CLK", "SD0", "SD1", "15", "2", "0", "4", "16", "17", "5", "18", "19", "GND", "21", "RX", "TX", "22", "23", "GND"]
 RIGHT = ["5V", "CMD", "SD3", "SD2", "13", "GND", "12", "14", "27", "26", "25", "33", "32", "35", "34", "SVN", "SVP", "EN", "3V3"]
 SCREEN = ["VCC", "GND", "CS", "RESET", "DC", "SDI", "SCK", "LED", "SDO", "T_CLK", "T_CS", "T_DIN", "T_DO", "T_IRQ"]
+# modules mounted flat on the parts side, components up; each corner hole sits over a board pad and a short
+# wire leg goes through both. MEASURE your modules and correct these numbers before etching.
+MT_W, MT_L = 17.0, 36.0          # MT3608 board (placed upright: VOUT end towards the ESP32)
+MT_IN_W, MT_IN_L = 2.0, 1.7      # hole centre from the long edge / from the short edge
+MT_X0, MT_Y0 = 16.0, 11.0        # its lower-left corner on our board
+TP_W, TP_L = 17.5, 28.0          # TP4056 USB-C board (upright: its USB-C at the bottom)
+TP_IN_L = 1.5                    # hole centre from the short edge
+TP_TOP = [1.6, 5.2, 12.3, 15.9]  # holes OUT+, B+, B-, OUT- measured from its left long edge (IN+ under OUT+, IN- under OUT-)
+TP_X0, TP_Y0 = 37.0, 11.0
+MOD_PAD = 2.4                    # pad under a module hole (drill 1.0)
+WIRE_PAD = (3.0, 3.0)            # pads for the wires: battery, switch, separate USB-C
+
 TO_GPIO = {"CS": "15", "DC": "2", "SDI": "4", "SCK": "16", "T_CLK": "17", "T_CS": "5", "T_DIN": "18", "T_DO": "19", "T_IRQ": "21"}
 
 
@@ -76,7 +88,8 @@ def ly(i):   # ESP32 pin row index (0 = top), y
 
 
 nets: dict[str, list] = {}       # net -> list of shapely geometries (copper)
-pads: list[tuple] = []           # (x, y, d or (w,h), net, label)
+pads: list[tuple] = []           # (x, y, net, label)
+names: list[tuple] = []          # copper text: (text, x, y, h, rotation, vertical anchor)
 
 
 def add(net, geom):
@@ -119,7 +132,6 @@ def build():
 
     # GND: header pin 2 straight down outside the left ESP32 row, into both left GND pins, on to the power area
     xg = jx(2)
-    trace("GND", [(jx(2), YJ), (xg, 5.0)], PWR)
     for i in (12, 18):
         trace("GND", [(xg, ly(i)), (XL, ly(i))], PWR)
 
@@ -136,37 +148,49 @@ def build():
         row = LEFT.index(g)
         trace("G" + g, [(jx(i), YJ), (jx(i), jog[g]), (lane[g], jog[g]), (lane[g], ly(row)), (XL, ly(row))])
 
-    # power area ---------------------------------------------------------------
-    x5 = XR - 2.6                                   # 5V lane, inside the right row
-    yM = YB - 10.0                                  # MT3608 pad row
-    trace("5V", [(XR, ly(0)), (x5, ly(0)), (x5, yM)], PWR)
-    # MT3608: VOUT+ / VOUT- under the ESP32, VIN+ / VIN- to the right
-    pad("5V", x5, yM, size=(3.0, 3.0), label="VOUT+")
-    pad("GND", x5 - 6.0, yM, size=(3.0, 3.0), label="VOUT-")
-    trace("GND", [(xg, 5.0), (x5 - 6.0, 5.0)], PWR)
-    trace("GND", [(x5 - 6.0, 5.0), (x5 - 6.0, yM)], PWR)
-    xa, xb = x5 + 7.0, x5 + 13.0
-    pad("VIN", xa, yM, size=(3.0, 3.0), label="VIN+")
-    pad("NC_VIN-", xb, yM, size=(3.0, 3.0), label="VIN-")
-    # switch: SW2 -> VIN+, SW1 <- TP4056 OUT+
-    yS = yM - 7.0
-    pad("VIN", xa, yS, size=(3.0, 3.0), label="SW")
-    pad("OUT", xb, yS, size=(3.0, 3.0), label="SW")
-    trace("VIN", [(xa, yS), (xa, yM)], PWR)
-    # TP4056: OUT+ / OUT- / B+ / B- / IN+ / IN-
-    yT = yS - 7.0
-    pad("OUT", xb, yT, size=(3.0, 3.0), label="OUT+")
-    trace("OUT", [(xb, yT), (xb, yS)], PWR)
-    pad("GND", xa, yT, size=(3.0, 3.0), label="OUT-")
-    trace("GND", [(xa, yT), (xa, 5.0), (x5 - 6.0, 5.0)], PWR)
-    # battery and USB-C: external solder pads at the left edge, the TP4056 wire pads beside them (left of the GND trunk)
-    yP, xe, xm = yM, 4.0, 10.0
-    for net, y, ext, mod in (("BAT+", yP, "BAT+", "B+"), ("BAT-", yP - 6.0, "BAT-", "B-"), ("USB+", yP - 13.0, "USB+", "IN+")):
-        pad(net, xe, y, size=(3.5, 3.0), label=ext)
-        pad(net, xm, y, size=(3.0, 3.0), label=mod)
-        trace(net, [(xe, y), (xm, y)], PWR)
-    pad("GND", xe, yP - 19.0, size=(3.5, 3.0), label="USB-")
-    trace("GND", [(xe, yP - 19.0), (xg, yP - 19.0)], PWR)
+    # power area: MT3608 and TP4056 drawn at their real size ---------------------------------------
+    mxl, mxr = MT_X0 + MT_IN_W, MT_X0 + MT_W - MT_IN_W
+    myb, myt = MT_Y0 + MT_IN_L, MT_Y0 + MT_L - MT_IN_L
+    pad("GND", mxl, myt, MOD_PAD, label="VOUT-")
+    pad("5V", mxr, myt, MOD_PAD, label="VOUT+")
+    pad("GND", mxl, myb, MOD_PAD, label="VIN-")
+    pad("VIN", mxr, myb, MOD_PAD, label="VIN+")
+    tx = [TP_X0 + o for o in TP_TOP]
+    tyt, tyb = TP_Y0 + TP_L - TP_IN_L, TP_Y0 + TP_IN_L
+    for net, x, lab in zip(("OUT", "BAT+", "BAT-", "NC_OUT-"), tx, ("OUT+", "B+", "B-", "OUT-")):
+        pad(net, x, tyt, MOD_PAD, label=lab)          # OUT- is the same copper as IN- inside the module
+    pad("USB+", tx[0], tyb, MOD_PAD, label="IN+")
+    pad("GND", tx[3], tyb, MOD_PAD, label="IN-")
+
+    def wire(net, x, y, name, above=False):
+        pad(net, x, y, size=WIRE_PAD, label=name)
+        names.append((name, x, y + (3.1 if above else -3.1), 1.3, 0, "c"))
+
+    yw = 7.5                                        # wire pads under the modules: switch and separate USB-C
+    wire("VIN", mxr, yw, "SW2")
+    wire("OUT", 35.5, yw, "SW1")
+    wire("USB+", 40.5, yw, "USB+")
+    wire("GND", 46.5, yw, "USB-")
+    wire("BAT+", tx[1], tyt + 6.0, "BAT+", above=True)   # battery pads above the charger
+    wire("BAT-", tx[2], tyt + 6.0, "BAT-", above=True)
+
+    x5, y5 = XR - 2.6, myt + 4.2                    # 5V: ESP32 5V pin -> down between the rows -> MT3608 VOUT+
+    trace("5V", [(XR, ly(0)), (x5, ly(0)), (x5, y5), (mxr, y5), (mxr, myt)], PWR)
+    yg = 1.4                                        # GND bus along the bottom edge
+    trace("GND", [(xg, YJ), (xg, yg), (tx[3], yg), (tx[3], tyb)], PWR)
+    for y in (myt, myb):
+        trace("GND", [(mxl, y), (xg, y)], PWR)
+    trace("GND", [(46.5, yw), (50.2, yw), (50.2, yg)], PWR)
+    trace("VIN", [(mxr, myb), (mxr, yw)], PWR)                      # MT3608 VIN+ -> SW2
+    trace("OUT", [(tx[0], tyt), (35.5, tyt), (35.5, yw)], PWR)      # TP4056 OUT+ -> SW1
+    trace("USB+", [(tx[0], tyb), (tx[0], 10.0), (40.5, 10.0), (40.5, yw)], PWR)
+    for k, net in ((1, "BAT+"), (2, "BAT-")):
+        trace(net, [(tx[k], tyt), (tx[k], tyt + 6.0)], PWR)
+    names.append(("MT3608", MT_X0 + MT_W / 2, MT_Y0 + MT_L / 2, 1.6, 90, "c"))
+    names.append(("TP4056", TP_X0 + TP_W / 2, TP_Y0 + TP_L / 2, 1.6, 90, "c"))
+    # screen pin names above the 3V3 arch, read from the copper side
+    for i, n in enumerate(SCREEN, 1):
+        names.append((n, jx(i), ya + 1.4, 1.5, 90, "b"))
 
 
 def drc():
@@ -185,20 +209,19 @@ def drc():
     return merged, bad, pieces, edge
 
 
-def text_poly(s, x, y, h=1.4, anchor="c"):
+def text_poly(s, x, y, h=1.4, rot=0, va="c"):
     tp = TextPath((0, 0), s, size=h, prop=FontProperties(family="DejaVu Sans", weight="bold"))
-    polys = [Polygon(p) for p in tp.to_polygons() if len(p) > 2]
-    # even-odd fill: letters with holes
     g = None
-    for p in polys:
-        g = p if g is None else g.symmetric_difference(p)
+    for p in tp.to_polygons():          # even-odd fill: letters with holes
+        if len(p) > 2:
+            g = Polygon(p) if g is None else g.symmetric_difference(Polygon(p))
     if g is None:
         return None
+    g = rotate(g, rot, origin=(0, 0))
     minx, miny, maxx, maxy = g.bounds
-    dx = {"c": -(minx + maxx) / 2, "l": -minx, "r": -maxx}[anchor]
-    g = translate(g, x + dx, y - (miny + maxy) / 2)
-    # copper text is read from the COPPER side, which is the mirror of this parts-side drawing: pre-mirror it
-    return sscale(g, xfact=-1, yfact=1, origin=(x + dx + (minx + maxx) / 2, y))
+    g = translate(g, x - (minx + maxx) / 2, y - (miny if va == "b" else (miny + maxy) / 2))
+    # copper text is read from the COPPER side, the mirror of this parts-side drawing: pre-mirror it
+    return sscale(g, xfact=-1, yfact=1, origin=(x, y))
 
 
 def main() -> int:
@@ -216,15 +239,13 @@ def main() -> int:
     print(f"DRC passed: every gap >= {CLEAR} mm, every net is one piece")
 
     copper = unary_union(list(merged.values()))
-    labels = {"VCC": "1", "BAT+": "BAT+", "BAT-": "BAT-", "USB+": "USB+", "USB-": "USB-"}
     marks = []
-    for x, y, net, lab in pads:      # copper text next to the external pads (readable from the copper side)
-        if lab in labels and lab != "VCC":
-            t = text_poly(lab, x, y + 2.7, h=1.5)
-            marks.append(t)
-    pin1 = text_poly("1", jx(1), YJ - 2.4, h=1.6)
-    marks.append(pin1)
-    marks = [m for m in marks if m is not None and m.distance(copper) >= CLEAR]
+    for t, x, y, h, rot, va in names:
+        m = text_poly(t, x, y, h, rot, va)
+        if m.distance(copper) < CLEAR or not box(0.6, 0.6, W - 0.6, L - 0.6).contains(m):
+            print(f"TEXT '{t}' TOO CLOSE TO COPPER OR EDGE")
+            return 1
+        marks.append(m)
     copper_all = unary_union([copper] + marks)
     pits = unary_union([Point(x, y).buffer(PIT / 2, quad_segs=8) for x, y, _, _ in pads])
     board = box(0, 0, W, L)
@@ -232,7 +253,7 @@ def main() -> int:
 
     OUT.mkdir(parents=True, exist_ok=True)
     # ---------- preview from the parts side ----------
-    fig, ax = plt.subplots(figsize=(7.5, 13))
+    fig, ax = plt.subplots(figsize=(7.5, 15.5))
     def fill(g, **kw):
         for p in (g.geoms if hasattr(g, "geoms") else [g]):
             ax.fill(*p.exterior.xy, **kw)
@@ -244,18 +265,37 @@ def main() -> int:
         ax.add_patch(plt.Circle((x, y), HOLE_D / 2, color="#222"))
     ax.add_patch(plt.Rectangle((XL - 2.4, YB - 3.0), ROW + 4.8, 18 * PITCH + 6.0, fill=False, ec="#1d3557", lw=2, ls="--"))
     ax.text(CX, YB - 4.6, "ESP32 (USB up, antenna down)", ha="center", fontsize=8, color="white")
+    for x0, y0, w, h, n in ((MT_X0, MT_Y0, MT_W, MT_L, "MT3608\n(set 5.0 V)"), (TP_X0, TP_Y0, TP_W, TP_L, "TP4056")):
+        ax.add_patch(plt.Rectangle((x0, y0), w, h, fill=False, ec="#9ad1ff", lw=1.6, ls="--"))
+        ax.text(x0 + w / 2, y0 + h / 2, n, ha="center", va="center", fontsize=7, color="#9ad1ff")
+    ax.add_patch(plt.Rectangle((TP_X0 + TP_W / 2 - 4.5, TP_Y0 - 0.8), 9.0, 7.5, fc="#bbbbbb", ec="#555"))
+    ax.text(TP_X0 + TP_W / 2, TP_Y0 + 3, "USB-C", ha="center", fontsize=5.5)
     ax.add_patch(plt.Rectangle((jx(1) - 1.4, YJ - 1.3), 13 * PITCH + 2.8, 2.6, fill=False, ec="#e8742c", lw=2))
     for i, n in enumerate(SCREEN, 1):
-        ax.text(jx(i), YJ + 4.6 if i % 2 else YJ + 6.4, n, ha="center", fontsize=5.5, color="white", rotation=90)
+        ax.text(jx(i), YJ + 4.4, n, ha="center", va="bottom", fontsize=5.5, color="white", rotation=90)
     for x, y, net, lab in pads:
         if lab and len(lab) <= 5 and (x in (XL, XR)) and not lab.startswith("SD") and lab not in ("CLK", "CMD"):
             ax.text(x + (-1.6 if x == XL else 1.6), y, lab, ha="right" if x == XL else "left", va="center", fontsize=5, color="white")
         elif lab and x not in (XL, XR) and y != YJ:
-            ax.text(x, y - 2.6, lab, ha="center", fontsize=5.5, color="white")
+            if not any(lab == t[0] for t in names):
+                ax.text(x, y - 2.6, lab, ha="center", fontsize=5.5, color="#ffe08a")
+    for t, x, y, *_ in names:
+        if t in ("BAT+", "BAT-", "USB+", "USB-", "SW1", "SW2"):
+            ax.text(x, y, t, ha="center", va="center", fontsize=6.5, fontweight="bold", color="white")
     ax.set_xlim(-2, W + 2); ax.set_ylim(-2, L + 2); ax.set_aspect("equal")
     ax.set_title(f"Parts side (copper shown through the board), {W:g} x {L:g} mm", fontsize=9)
     ax.axis("off")
     fig.tight_layout(); fig.savefig(OUT / "preview_parts_side.png", dpi=170); plt.close(fig)
+
+    # ---------- what you see on the copper side (names read correctly) ----------
+    fig, ax = plt.subplots(figsize=(7.5, 15.5))
+    ax.add_patch(plt.Rectangle((0, 0), W, L, fc="#3a2a1a", ec="black"))
+    fill(sscale(copper_all, xfact=-1, yfact=1, origin=(W / 2, L / 2)), color="#e0a84a")
+    for x, y, _, _ in pads:
+        ax.add_patch(plt.Circle((W - x, y), HOLE_D / 2, color="#111"))
+    ax.set_xlim(-2, W + 2); ax.set_ylim(-2, L + 2); ax.set_aspect("equal"); ax.axis("off")
+    ax.set_title("Copper side (solder side) - after etching", fontsize=9)
+    fig.tight_layout(); fig.savefig(OUT / "preview_copper_side.png", dpi=170); plt.close(fig)
 
     # ---------- laser file: copper side = mirror of the parts side ----------
     burn_m = sscale(burn, xfact=-1, yfact=1, origin=(W / 2, L / 2))
