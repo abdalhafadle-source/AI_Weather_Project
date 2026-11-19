@@ -10,7 +10,9 @@ void wifiSetup(bool force);
 void pollNow();
 long long isoToEpoch(const char* s);
 
-// ---------- hardware: ILI9488 and XPT2046 share one SPI bus (VSPI = SPI3_HOST) ----------
+// ---------- hardware (carrier board cad/pcb, 2026-11-19): screen on VSPI, touch on its own HSPI bus ----------
+// pins chosen so the single-sided board needs no jumper wires: screen CS 15, DC 2, MOSI 4, SCK 16, RESET on 3V3
+// (software reset); touch T_CLK 17, T_CS 5, T_DIN 18, T_DO 19, T_IRQ 21. Both go through the GPIO matrix.
 class LGFX : public lgfx::LGFX_Device {
   lgfx::Panel_ILI9488 _panel;
   lgfx::Bus_SPI _bus;
@@ -21,14 +23,14 @@ public:
       auto c = _bus.config();
       c.spi_host = SPI3_HOST;
       c.spi_mode = 0;
-      c.freq_write = 27000000;  // conservative: breadboard wires
+      c.freq_write = 20000000;  // through the GPIO matrix: keep it at 20 MHz
       c.freq_read = 16000000;
-      c.spi_3wire = false;      // screen SDO is not wired; MISO (19) belongs to the touch chip
+      c.spi_3wire = false;      // screen SDO is not wired
       c.use_lock = true;
       c.dma_channel = SPI_DMA_CH_AUTO;
-      c.pin_sclk = 18;
-      c.pin_mosi = 23;
-      c.pin_miso = 19;
+      c.pin_sclk = 16;
+      c.pin_mosi = 4;
+      c.pin_miso = -1;
       c.pin_dc = 2;
       _bus.config(c);
       _panel.setBus(&_bus);
@@ -36,7 +38,7 @@ public:
     {
       auto c = _panel.config();
       c.pin_cs = 15;
-      c.pin_rst = 4;
+      c.pin_rst = -1;           // RESET is tied to 3V3 on the board: software reset
       c.pin_busy = -1;
       c.panel_width = 320;
       c.panel_height = 480;
@@ -46,7 +48,7 @@ public:
       c.invert = false;
       c.rgb_order = false;
       c.dlen_16bit = false;
-      c.bus_shared = true;
+      c.bus_shared = false;     // the touch chip has its own bus
       _panel.config(c);
     }
     {
@@ -55,13 +57,13 @@ public:
       c.x_max = 3900;
       c.y_min = 300;
       c.y_max = 3900;
-      c.pin_int = 34;
-      c.bus_shared = true;
+      c.pin_int = 21;
+      c.bus_shared = false;
       c.offset_rotation = 0;
-      c.spi_host = SPI3_HOST;
+      c.spi_host = SPI2_HOST;   // HSPI
       c.freq = 1000000;
-      c.pin_sclk = 18;
-      c.pin_mosi = 23;
+      c.pin_sclk = 17;
+      c.pin_mosi = 18;
       c.pin_miso = 19;
       c.pin_cs = 5;
       _touch.config(c);

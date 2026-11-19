@@ -35,12 +35,13 @@ def ar(s):
 
 
 # screen header, in the order printed on the screen board (top to bottom), and where each pin goes
-SCREEN = [("T_IRQ", "34"), ("T_DO", "19"), ("T_DIN", "23"), ("T_CS", "5"), ("T_CLK", "18"), ("SDO(MISO)", None),
-          ("LED", "3V3"), ("SCK", "18"), ("SDI(MOSI)", "23"), ("DC/RS", "2"), ("RESET", "4"), ("CS", "15"),
+# pins as on the carrier board (2026-11-19): screen on its own bus, touch on its own bus, RESET on 3V3
+SCREEN = [("T_IRQ", "21"), ("T_DO", "19"), ("T_DIN", "18"), ("T_CS", "5"), ("T_CLK", "17"), ("SDO(MISO)", None),
+          ("LED", "3V3"), ("SCK", "16"), ("SDI(MOSI)", "4"), ("DC/RS", "2"), ("RESET", "3V3"), ("CS", "15"),
           ("GND", "GND"), ("VCC", "3V3")]
-ESP = ["3V3", "GND", "5V", "2", "4", "5", "15", "18", "19", "23", "34", "26", "27"]
-COL = {"3V3": "#c0392b", "GND": "#111111", "5V": "#e67e22", "18": "#2f6fde", "23": "#8e44ad", "19": "#16a085",
-       "2": "#2e7d32", "4": "#2e7d32", "5": "#16a085", "15": "#2e7d32", "34": "#16a085"}
+ESP = ["3V3", "GND", "5V", "2", "4", "5", "15", "16", "17", "18", "19", "21"]
+COL = {"3V3": "#c0392b", "GND": "#111111", "5V": "#e67e22", "16": "#2f6fde", "4": "#8e44ad", "17": "#16a085",
+       "18": "#16a085", "19": "#16a085", "21": "#16a085", "2": "#2e7d32", "5": "#16a085", "15": "#2e7d32"}
 
 
 def block(ax, x, y, w, h, title, fc, ec="#1b2733", dashed=False):
@@ -66,7 +67,7 @@ def main() -> int:
 
     # ESP32
     ex, ey0, estep = 92, 96, 6.2
-    block(ax, ex, ey0 - estep * 12 - 3, 22, estep * 12 + 6, "ESP32 NodeMCU-32S (38 pin)", "#e8f6ef")
+    block(ax, ex, ey0 - estep * 12 - 3, 22, estep * 12 + 6, "ESP32 NodeMCU-32S (38 pin) - new pins", "#e8f6ef")
     epin = {}
     for k, name in enumerate(ESP):
         y = ey0 - k * estep
@@ -76,7 +77,7 @@ def main() -> int:
         epin[name] = (ex, y)
 
     # wires screen -> ESP32 (orthogonal, one bus column per ESP pin)
-    cols = {name: 40 + i * 3.8 for i, name in enumerate(["3V3", "GND", "2", "4", "5", "15", "18", "19", "23", "34"])}
+    cols = {name: 40 + i * 3.6 for i, name in enumerate(["3V3", "GND", "2", "4", "5", "15", "16", "17", "18", "19", "21"])}
     for k, (name, to) in enumerate(SCREEN):
         x0, y0 = spin[k]
         if to is None:
@@ -123,15 +124,6 @@ def main() -> int:
     pads(122, 26, ar("باد Type-C منفصل"), ["USB+", "USB-"], "l")
     ax.plot([125, 128, 128, 130], [28.5, 28.5, -6, -6], color="#e67e22", lw=1.4)
     ax.plot([125, 126.5, 126.5, 130], [21.5, 21.5, -12, -12], color="#111", lw=1.4)
-
-    # optional relay connector
-    block(ax, 130, 72, 26, 24, ar("موصل المرحّلات (اختياري)"), "#f4f4f4", dashed=True)
-    for i, (lb, src) in enumerate([("IN1", "26"), ("IN2", "27"), ("VCC", "5V"), ("GND", "GND")]):
-        y = 92 - i * 5.5
-        ax.plot(130, y, "s", ms=6, color="#555")
-        ax.text(133, y, f"{lb}  ←  {('GPIO ' + src) if src.isdigit() else src}", va="center", fontsize=9, color="#333")
-    ax.plot([epin["26"][0] + 22, 130], [epin["26"][1], 92], color="#7f8c8d", lw=1.2, ls="--")
-    ax.plot([epin["27"][0] + 22, 130], [epin["27"][1], 86.5], color="#7f8c8d", lw=1.2, ls="--")
 
     notes = [ar("! أضفنا رافع جهد، لأن جهد البطارية وحده لا يكفي اللوحة"),
              ar("! أضفنا مفتاح تشغيل بين الشاحن ورافع الجهد")]

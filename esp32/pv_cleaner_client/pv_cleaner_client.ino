@@ -5,8 +5,8 @@
 // Board: ESP32 (Arduino core). Libraries are bundled in this folder (ArduinoJson, WiFiManager by tzapu, MIT).
 // Screen: 3.5" 480x320 touch screen (ILI9488 + XPT2046) drawn by ui.h with LovyanGFX 1.3.0, which lives in
 // esp32/libraries (not in git): arduino-cli lib download LovyanGFX, then unzip it there. Wiring (SPI, VSPI):
-//   screen: SCK 18, MOSI 23, CS 15, DC 2, RST 4, SDO not connected, LED on 3V3
-//   touch:  T_CLK 18, T_DIN 23, T_DO 19, T_CS 5, T_IRQ 34
+//   (carrier board cad/pcb) screen: SCK 16, MOSI 4, CS 15, DC 2, RESET + LED + VCC on 3V3, SDO not connected
+//   touch (own bus): T_CLK 17, T_DIN 18, T_DO 19, T_CS 5, T_IRQ 21
 // First start (or finger held on the screen for the first 3 s): "Touch the arrows to calibrate", saved in flash.
 // Wi-Fi is set from a phone, no re-upload needed (WiFiManager): when the saved network is not reachable, the
 // ESP32 opens its own network "Hilla-PV-Setup" (password PORTAL_PASS in secrets.h) for 3 minutes; join it,
