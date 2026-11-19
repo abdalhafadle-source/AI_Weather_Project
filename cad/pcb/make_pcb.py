@@ -157,8 +157,8 @@ def build():
     pad("VIN", mxr, myb, MOD_PAD, label="VIN+")
     tx = [TP_X0 + o for o in TP_TOP]
     tyt, tyb = TP_Y0 + TP_L - TP_IN_L, TP_Y0 + TP_IN_L
-    for net, x, lab in zip(("OUT", "BAT+", "BAT-", "NC_OUT-"), tx, ("OUT+", "B+", "B-", "OUT-")):
-        pad(net, x, tyt, MOD_PAD, label=lab)          # OUT- is the same copper as IN- inside the module
+    for net, x, lab in zip(("OUT", "BAT+", "BAT-", "GND"), tx, ("OUT+", "B+", "B-", "OUT-")):
+        pad(net, x, tyt, MOD_PAD, label=lab)
     pad("USB+", tx[0], tyb, MOD_PAD, label="IN+")
     pad("GND", tx[3], tyb, MOD_PAD, label="IN-")
 
@@ -177,7 +177,7 @@ def build():
     x5, y5 = XR - 2.6, myt + 4.2                    # 5V: ESP32 5V pin -> down between the rows -> MT3608 VOUT+
     trace("5V", [(XR, ly(0)), (x5, ly(0)), (x5, y5), (mxr, y5), (mxr, myt)], PWR)
     yg = 1.4                                        # GND bus along the bottom edge
-    trace("GND", [(xg, YJ), (xg, yg), (tx[3], yg), (tx[3], tyb)], PWR)
+    trace("GND", [(xg, YJ), (xg, yg), (tx[3], yg), (tx[3], tyt)], PWR)   # GND bus up through IN- to OUT-
     for y in (myt, myb):
         trace("GND", [(mxl, y), (xg, y)], PWR)
     trace("GND", [(46.5, yw), (50.2, yw), (50.2, yg)], PWR)
