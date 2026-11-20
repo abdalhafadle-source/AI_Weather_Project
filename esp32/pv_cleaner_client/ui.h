@@ -98,7 +98,8 @@ static const uint32_t C_BG = 0x0b1018, C_CARD = 0x141c27, C_LINE = 0x223042, C_F
 #define FB12 (&fonts::FreeSansBold12pt7b)
 #define FB18 (&fonts::FreeSansBold18pt7b)
 static const int TOP_H = 30, NAV_Y = 274, NAV_H = 46;
-enum { SCR_STATUS, SCR_FORECAST, SCR_WASH, SCR_DEVICE };
+enum { SCR_STATUS, SCR_FORECAST, SCR_WASH, SCR_DEVICE, SCR_WEB, SCR_N };
+static const int TAB_W = 480 / SCR_N;
 static int scr = SCR_STATUS;
 static bool confirmOpen = false, busy = false, lastRun = false;
 static char washMsg[44] = "";
@@ -234,13 +235,13 @@ static void drawTop() {
   }
 }
 static void drawNav() {
-  static const char* names[] = {"Status", "Forecast", "Wash", "Device"};
+  static const char* names[] = {"Status", "Forecast", "Wash", "Device", "Web"};
   tft.fillRect(0, NAV_Y, 480, NAV_H, C_NAV);
   tft.drawFastHLine(0, NAV_Y, 480, C_LINE);
-  for (int i = 0; i < 4; i++) {
+  for (int i = 0; i < SCR_N; i++) {
     bool on = i == scr;
-    if (on) tft.fillRect(i * 120 + 30, NAV_Y + 1, 60, 3, C_OK);
-    txt(names[i], i * 120 + 60, NAV_Y + 25, on ? FB9 : F9, on ? C_OK : C_DIM, textdatum_t::middle_center);
+    if (on) tft.fillRect(i * TAB_W + TAB_W / 2 - 30, NAV_Y + 1, 60, 3, C_OK);
+    txt(names[i], i * TAB_W + TAB_W / 2, NAV_Y + 25, on ? FB9 : F9, on ? C_OK : C_DIM, textdatum_t::middle_center);
   }
 }
 
@@ -507,6 +508,20 @@ static void drawDevice() {
   button(296, 120, 170, 56, "Check now", false);
 }
 
+// ---------- Web screen: QR code of the live website (for the committee) ----------
+static void drawWeb() {
+  tft.fillSmoothRoundRect(24, 42, 220, 220, 12, TFT_WHITE);  // white card = the quiet zone around the code
+  tft.qrcode("https://hilla-ai.duckdns.org/", 46, 64, 176, 2);
+  txt("Live website", 262, 66, FB12, C_FG);
+  txt("Scan with a phone camera", 262, 96, F9, C_DIM);
+  txt("hilla-ai.duckdns.org", 262, 128, FB9, C_OK);
+  static const char* pts[] = {"AI rain & dust forecast", "Every hourly decision", "Washes and model results", "Arabic / English"};
+  for (int i = 0; i < 4; i++) {
+    tft.fillSmoothCircle(268, 168 + i * 24, 3, C_OK);
+    txt(pts[i], 280, 168 + i * 24, F9, C_FG);
+  }
+}
+
 // ---------- drawing control ----------
 static void uiFull() {
   tft.fillRect(0, TOP_H, 480, NAV_Y - TOP_H, C_BG);
@@ -516,6 +531,7 @@ static void uiFull() {
     case SCR_STATUS: drawStatus(); break;
     case SCR_FORECAST: drawForecast(); break;
     case SCR_WASH: drawWash(); break;
+    case SCR_WEB: drawWeb(); break;
     default: drawDevice();
   }
 }
@@ -644,8 +660,8 @@ void uiBusy(bool b) {
 // ---------- touch ----------
 static void onTap(int x, int y) {
   if (y >= NAV_Y) {
-    int i = x / 120;
-    if (i > 3) i = 3;
+    int i = x / TAB_W;
+    if (i > SCR_N - 1) i = SCR_N - 1;
     if (i != scr || confirmOpen) { scr = i; confirmOpen = false; uiFull(); }
     return;
   }
