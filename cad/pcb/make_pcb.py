@@ -75,6 +75,8 @@ TP_TOP = [1.6, 5.2, 12.3, 15.9]  # holes OUT+, B+, B-, OUT- measured from its le
 TP_X0, TP_Y0 = 37.0, 11.0
 MOD_PAD = 2.4                    # pad under a module hole (drill 1.0)
 WIRE_PAD = (3.0, 3.0)            # pads for the wires: battery, switch, separate USB-C
+MOUNT = [(5.0, 5.0), (5.0, 18.0)]  # 3.2 mm holes (M3 / M2.5) that hold the board on posts in the box; no copper
+MOUNT_D, MOUNT_KEEP = 3.2, 3.2    # hole diameter; no copper closer than MOUNT_KEEP to the centre (screw head / post)
 
 TO_GPIO = {"CS": "15", "DC": "2", "SDI": "4", "SCK": "16", "T_CLK": "17", "T_CS": "5", "T_DIN": "18", "T_DO": "19", "T_IRQ": "21"}
 
@@ -206,6 +208,8 @@ def drc():
     pieces = [f"{n} ({len(g.geoms)} pieces)" for n, g in merged.items()
               if not n.startswith("NC") and g.geom_type == "MultiPolygon"]
     edge = [n for n, g in merged.items() if not box(0.6, 0.6, W - 0.6, L - 0.6).contains(g)]
+    copper = unary_union(list(merged.values()))
+    bad += [f"mount hole {m} too close to copper" for m in MOUNT if Point(m).distance(copper) < MOUNT_KEEP]
     return merged, bad, pieces, edge
 
 
@@ -247,7 +251,8 @@ def main() -> int:
             return 1
         marks.append(m)
     copper_all = unary_union([copper] + marks)
-    pits = unary_union([Point(x, y).buffer(PIT / 2, quad_segs=8) for x, y, _, _ in pads])
+    pits = unary_union([Point(x, y).buffer(PIT / 2, quad_segs=8) for x, y, _, _ in pads] +
+                       [Point(m).buffer(PIT / 2, quad_segs=8) for m in MOUNT])
     board = box(0, 0, W, L)
     burn = board.difference(copper_all).union(pits)          # laser burns the paint here
 
@@ -263,6 +268,8 @@ def main() -> int:
     fill(copper, color="#d9a441", alpha=0.75)
     for x, y, _, _ in pads:
         ax.add_patch(plt.Circle((x, y), HOLE_D / 2, color="#222"))
+    for x, y in MOUNT:
+        ax.add_patch(plt.Circle((x, y), MOUNT_D / 2, fc="white", ec="#888"))
     ax.add_patch(plt.Rectangle((XL - 2.4, YB - 3.0), ROW + 4.8, 18 * PITCH + 6.0, fill=False, ec="#1d3557", lw=2, ls="--"))
     ax.text(CX, YB - 4.6, "ESP32 (USB up, antenna down)", ha="center", fontsize=8, color="white")
     for x0, y0, w, h, n in ((MT_X0, MT_Y0, MT_W, MT_L, "MT3608\n(set 5.0 V)"), (TP_X0, TP_Y0, TP_W, TP_L, "TP4056")):
@@ -329,7 +336,10 @@ def main() -> int:
     ax.add_patch(plt.Rectangle((0, 0), W, L, fill=False))
     for x, y, _, _ in pads:
         ax.plot(W - x, y, "k+", ms=4)
-    ax.set_aspect("equal"); ax.set_title(f"Drill {len(pads)} holes, 0.9-1.0 mm (copper side view)", fontsize=9)
+    for x, y in MOUNT:
+        ax.add_patch(plt.Circle((W - x, y), MOUNT_D / 2, fill=False, ec="red"))
+    ax.set_aspect("equal")
+    ax.set_title(f"Drill {len(pads)} holes 0.9-1.0 mm + {len(MOUNT)} mounting holes {MOUNT_D:g} mm (red), copper side view", fontsize=8)
     fig.tight_layout(); fig.savefig(OUT / "drill.png", dpi=150); plt.close(fig)
     print(f"written to {OUT}")
     return 0

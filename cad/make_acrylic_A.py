@@ -7,7 +7,10 @@ Usage (needs: pip install shapely ezdxf matplotlib):
     python cad/make_acrylic_A.py            # writes cad/acrylic_A/
 
 Box: front panel + 4 walls joined by finger joints (glue them with acrylic cement), a flat back panel, and
-4 M3 brass standoffs (length = DEPTH - 2*T) in the inner corners. M3 screws go through the front panel into
+4 M3 brass standoffs (length = DEPTH - 2*T) in the inner corners.
+Inside, from the front (2026-11-21): screen module -> carrier board cad/pcb (plugged into the screen header, held
+by 2 M3 x 15 mm standoffs on the front panel) -> flat LiPo 60 x 130 x 12 behind the board (foam pad behind it).
+USB-C socket and on/off switch in the LEFT wall, next to the board's wire pads (board header at the right end). M3 screws go through the front panel into
 the standoffs and through the back panel into them: the back opens for the battery, the box is clamped.
 The screen module is screwed behind the front panel (one M3 nut as spacer on each screw) and its glass
 passes through the window, standing GLASS_PROUD mm out of the front (resistive touch needs a bare surface).
@@ -31,11 +34,16 @@ import matplotlib.pyplot as plt
 from shapely.geometry import Point, Polygon, box
 from shapely.ops import unary_union
 
+sys.path.insert(0, str(Path(__file__).resolve().parent / "pcb"))
+import make_pcb as pcb  # noqa: E402  (board size, header row and mounting holes stay in step with the board)
+
 # ---------------- parameters ----------------
 T = 3.0                    # acrylic thickness
 KERF = 0.10                # laser kerf (line width); outlines grow and holes shrink by KERF/2
-LENGTH, HEIGHT, DEPTH = 118.0, 74.0, 36.0   # outer box size; DEPTH - 2T = standoff length (30 mm)
-N_LEN, N_HEI, N_DEP = 11, 7, 3              # finger counts per edge (odd numbers)
+END_GAP = 7.0              # free space at each end of the board, inside (corner standoffs)
+LENGTH = pcb.L + 2 * END_GAP + 2 * T   # 151: board 131 + gaps; the 60 x 130 battery fits too
+HEIGHT, DEPTH = 74.0, 41.0 # DEPTH - 2T = 35 mm standoffs (stack inside ~30 mm + foam)
+N_LEN, N_HEI, N_DEP = 13, 7, 5              # finger counts per edge (odd numbers)
 
 MOD_W, MOD_H = 98.3, 56.3  # measured 2026-11-18: screen module board (ILI9488 3.5")
 MOD_HOLE_IN_X = 3.1        # measured: hole centre from the SHORT edge (rim 1.60 + radius 1.5)
@@ -53,7 +61,9 @@ SPACER = 2.4               # between the board and the acrylic: one M3 nut (2.4 
 GLASS_PROUD = GLASS - T - SPACER   # how far the glass stands out of the front (0.4 mm)
 CORNER_HOLE = 6.2          # standoff holes, distance from the outer edges (M3 hex standoff, 5 mm across flats)
 USB_W, USB_H = 9.5, 3.8    # USB-C slot
-USB_FROM_BACK = 5.0        # USB-C centre, mm in front of the back panel's inner face
+PORTS_FROM_FRONT = 9.0     # USB-C and switch centre, mm behind the front face (free space in front of the board)
+HDR_EDGE = 2.5             # MEASURE: screen header row centre from the screen board's short edge
+PCB_STANDOFF = 15.0        # board standoff length: nut spacer 2.4 + screen board 1.6 + male header 2.5 + female 8.5 (MEASURE)
 SWITCH_W, SWITCH_L, SWITCH_HOLES = 4.0, 8.5, 15.0   # mini slide switch: slot and its two M2 holes
 GAP = 6.0                  # space between panels on the sheet
 
@@ -116,12 +126,17 @@ def build():
     WALL = D - T                      # walls run from the front face to the back panel
     corner = [(CORNER_HOLE, CORNER_HOLE), (L - CORNER_HOLE, CORNER_HOLE),
               (CORNER_HOLE, H - CORNER_HOLE), (L - CORNER_HOLE, H - CORNER_HOLE)]
-    mx, my = (L - MOD_W) / 2, (H - MOD_H) / 2   # screen board centred in the box
+    # the board lies along the box, header at the RIGHT end, parts side towards the front panel
+    bx = lambda py: T + END_GAP + py                 # board y -> panel x
+    by = lambda px: (H - pcb.W) / 2 + (pcb.W - px)   # board x -> panel y (panel seen from the outside)
+    mx = bx(pcb.YJ + HDR_EDGE) - MOD_W               # screen board: its header over the board's header
+    my = (H - MOD_H) / 2
     mod_holes = [(mx + dx, my + dy) for dx in (MOD_HOLE_IN_X, MOD_W - MOD_HOLE_IN_X)
                  for dy in (MOD_HOLE_IN_Y, MOD_H - MOD_HOLE_IN_Y)]
 
     front = fingers(L, H, {"b": ("F", N_LEN), "t": ("F", N_LEN), "l": ("F", N_HEI), "r": ("F", N_HEI)})
-    cuts = [rrect(L / 2 + WIN_OFF_X, H / 2, WIN_W, WIN_H, WIN_R)] + [hole(x, y, MOD_HOLE_D) for x, y in mod_holes]
+    cuts = [rrect(mx + MOD_W / 2 + WIN_OFF_X, H / 2, WIN_W, WIN_H, WIN_R)] + [hole(x, y, MOD_HOLE_D) for x, y in mod_holes]
+    cuts += [hole(bx(y), by(x), 3.2) for x, y in pcb.MOUNT]        # M3 x 15 standoffs that hold the board
     cuts += [hole(x, y, 3.2) for x, y in corner]
     front = front.difference(unary_union(cuts))
 
@@ -139,15 +154,14 @@ def build():
 
     top = wall(L, N_LEN, N_DEP)
     bottom = wall(L, N_LEN, N_DEP)
-    usb_y = WALL - USB_FROM_BACK
-    bottom = bottom.difference(unary_union([slot(L / 2, usb_y, USB_W, USB_H), hole(L / 2 + 11, usb_y, 3.0)]))
     left = side(N_DEP)
     right = side(N_DEP)
-    sx, sy = H * 0.6, WALL / 2        # switch: along the wall (height), in the middle of the depth
-    right = right.difference(unary_union([slot(sx, sy, SWITCH_L, SWITCH_W),
-                                          hole(sx - SWITCH_HOLES / 2, sy, 2.2), hole(sx + SWITCH_HOLES / 2, sy, 2.2)]))
-    return [("FRONT (screen side)", front), ("BACK (removable)", back), ("TOP wall", top),
-            ("BOTTOM wall (USB-C + LED)", bottom), ("LEFT wall", left), ("RIGHT wall (switch)", right)]
+    py_ = PORTS_FROM_FRONT              # USB-C and switch in the left wall, next to the board's wire pads
+    ux, sx = H / 2 - 13, H / 2 + 13
+    left = left.difference(unary_union([slot(ux, py_, USB_W, USB_H), slot(sx, py_, SWITCH_L, SWITCH_W),
+                                        hole(sx - SWITCH_HOLES / 2, py_, 2.2), hole(sx + SWITCH_HOLES / 2, py_, 2.2)]))
+    return [("FRONT (screen side, outside view)", front), ("BACK (removable)", back), ("TOP wall", top),
+            ("BOTTOM wall", bottom), ("LEFT wall (USB-C + switch)", left), ("RIGHT wall", right)]
 
 
 def layout(panels):
