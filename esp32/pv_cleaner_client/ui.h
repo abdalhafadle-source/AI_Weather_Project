@@ -10,9 +10,34 @@ void wifiSetup(bool force);
 void pollNow();
 long long isoToEpoch(const char* s);
 
-// ---------- hardware (carrier board cad/pcb, 2026-11-19): screen on VSPI, touch on its own HSPI bus ----------
-// pins chosen so the single-sided board needs no jumper wires: screen CS 15, DC 2, MOSI 4, SCK 16, RESET on 3V3
-// (software reset); touch T_CLK 17, T_CS 5, T_DIN 18, T_DO 19, T_IRQ 21. Both go through the GPIO matrix.
+// ---------- hardware: which wiring? 1 = breadboard (now), 0 = carrier board cad/pcb (after it is built) ----------
+// breadboard: screen and touch share VSPI (SCK 18, MOSI 23, MISO 19), CS 15, DC 2, RESET 4, T_CS 5, T_IRQ 34.
+// carrier board: screen on VSPI (CS 15, DC 2, MOSI 4, SCK 16, RESET on 3V3 = software reset), touch on its own
+// HSPI bus (T_CLK 17, T_CS 5, T_DIN 18, T_DO 19, T_IRQ 21), so the single-sided board needs no jumper wires.
+#define PINS_BREADBOARD 1
+#if PINS_BREADBOARD
+#define P_SCLK 18
+#define P_MOSI 23
+#define P_MISO 19
+#define P_RST 4
+#define P_FREQ 27000000
+#define P_SHARED true
+#define T_HOST SPI3_HOST
+#define T_SCLK 18
+#define T_MOSI 23
+#define T_IRQ 34
+#else
+#define P_SCLK 16
+#define P_MOSI 4
+#define P_MISO -1
+#define P_RST -1
+#define P_FREQ 20000000
+#define P_SHARED false
+#define T_HOST SPI2_HOST
+#define T_SCLK 17
+#define T_MOSI 18
+#define T_IRQ 21
+#endif
 class LGFX : public lgfx::LGFX_Device {
   lgfx::Panel_ILI9488 _panel;
   lgfx::Bus_SPI _bus;
@@ -23,14 +48,14 @@ public:
       auto c = _bus.config();
       c.spi_host = SPI3_HOST;
       c.spi_mode = 0;
-      c.freq_write = 20000000;  // through the GPIO matrix: keep it at 20 MHz
+      c.freq_write = P_FREQ;
       c.freq_read = 16000000;
       c.spi_3wire = false;      // screen SDO is not wired
       c.use_lock = true;
       c.dma_channel = SPI_DMA_CH_AUTO;
-      c.pin_sclk = 16;
-      c.pin_mosi = 4;
-      c.pin_miso = -1;
+      c.pin_sclk = P_SCLK;
+      c.pin_mosi = P_MOSI;
+      c.pin_miso = P_MISO;
       c.pin_dc = 2;
       _bus.config(c);
       _panel.setBus(&_bus);
@@ -38,7 +63,7 @@ public:
     {
       auto c = _panel.config();
       c.pin_cs = 15;
-      c.pin_rst = -1;           // RESET is tied to 3V3 on the board: software reset
+      c.pin_rst = P_RST;
       c.pin_busy = -1;
       c.panel_width = 320;
       c.panel_height = 480;
@@ -48,7 +73,7 @@ public:
       c.invert = false;
       c.rgb_order = false;
       c.dlen_16bit = false;
-      c.bus_shared = false;     // the touch chip has its own bus
+      c.bus_shared = P_SHARED;
       _panel.config(c);
     }
     {
@@ -57,13 +82,13 @@ public:
       c.x_max = 3900;
       c.y_min = 300;
       c.y_max = 3900;
-      c.pin_int = 21;
-      c.bus_shared = false;
+      c.pin_int = T_IRQ;
+      c.bus_shared = P_SHARED;
       c.offset_rotation = 0;
-      c.spi_host = SPI2_HOST;   // HSPI
+      c.spi_host = T_HOST;
       c.freq = 1000000;
-      c.pin_sclk = 17;
-      c.pin_mosi = 18;
+      c.pin_sclk = T_SCLK;
+      c.pin_mosi = T_MOSI;
       c.pin_miso = 19;
       c.pin_cs = 5;
       _touch.config(c);
