@@ -5,3 +5,5 @@ date,target,current_ap,candidate_ap,promoted,rows_train,holdout_start,current_un
 2026-11-06,dust,0.5907,0.6427,True,38387,2026-08-01,True
 2026-11-13,rain,0.487,0.4793,False,38555,2026-08-08,True
 2026-11-13,dust,0.6349,0.6215,False,38555,2026-08-08,True
+2026-11-20,rain,0.47,0.4648,False,38723,2026-08-15,True
+2026-11-20,dust,0.5321,0.5364,True,38723,2026-08-15,True
