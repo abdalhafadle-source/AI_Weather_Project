@@ -52,7 +52,7 @@ const unsigned long HARD_CAP_MS = 30UL * 60 * 1000;     // absolute maximum run 
 const long MIN_GAP_S = 6L * 3600;  // same caps as decision.py, enforced here too in case the command
 const int MAX_PER_DAY = 2;         // file is ever wrong or tampered with
 const unsigned long HELLO_MS = 1000;        // heartbeat to the panel (it finds our radio channel by it)
-const unsigned long PANEL_LOST_MS = 10000;  // no status from the panel for this long -> "offline"
+const unsigned long PANEL_LOST_MS = 30000;  // no status from the panel for this long -> "offline"
 
 Preferences prefs;
 unsigned long lastPoll = 0, runStart = 0, runMs = 0, lastHello = 0;
@@ -121,6 +121,7 @@ void wifiSetup(bool force) {
   Serial.printf("Wi-Fi setup: if no network, join \"%s\" from a phone\n", PORTAL_NAME);
   bool ok = force ? wm.startConfigPortal(PORTAL_NAME, PORTAL_PASS) : wm.autoConnect(PORTAL_NAME, PORTAL_PASS);
   Serial.println(ok ? "Wi-Fi connected" : "Wi-Fi setup timed out -> will try again later");
+  WiFi.setSleep(false);  // power saving makes the radio miss ESP-NOW messages from the panel
   Serial.println(linkBegin(onLink) ? "ESP-NOW ready" : "ESP-NOW failed");  // on the (new) radio channel
   uiWifiDone();
 }
