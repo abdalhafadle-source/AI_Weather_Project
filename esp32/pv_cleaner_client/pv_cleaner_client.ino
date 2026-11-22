@@ -4,6 +4,8 @@
 // controller (esp32/pv_panel_c3, ESP32-C3 next to the pump) to wash, over ESP-NOW (espnow_link.h, signed with
 // ACK_KEY). The panel runs the pump and then the brush and answers; only after that answer is the wash counted
 // and the server told (POST /ack). If the panel does not answer, nothing is saved and the next poll tries again.
+// The panel needs no Wi-Fi setup of its own: this device sends it its network name and password (encrypted)
+// whenever the panel has none or a different one, so both stay on the same network and radio channel.
 //
 // Board: ESP32 (Arduino core). Libraries are bundled in this folder (ArduinoJson, WiFiManager by tzapu, MIT).
 // Screen: 3.5" 480x320 touch screen (ILI9488 + XPT2046) drawn by ui.h with LovyanGFX 1.3.0, which lives in
@@ -62,7 +64,8 @@ int wifiFails = 0;
 // panel controller state, from its STATUS messages (the radio callback only copies; loop() applies it)
 bool panelOnline = false;
 unsigned long panelSeenMs = 0;
-uint32_t panelNonce = 0;
+uint32_t panelNonce = 0, panelNet = 0;
+unsigned long lastWifiShare = 0;
 volatile bool rxStatus = false, rxResult = false;
 LinkMsg rxMsg, rxRes;
 void onLink(const uint8_t* mac, const uint8_t* data, int len) {
@@ -78,6 +81,7 @@ void applyStatus() {
   panelOnline = true;
   panelSeenMs = millis();
   panelNonce = m.nonce;
+  panelNet = m.net;
   running = m.running;
   if (running) { runMs = m.runMs; runStart = millis() - (m.runMs - m.ms); }
 }
@@ -263,8 +267,26 @@ void setup() {
   configTime(0, 0, "pool.ntp.org", "time.google.com");  // UTC clock from the internet (free)
 }
 
+// give the panel our Wi-Fi (encrypted) when it has none or another one; at most every 20 s
+void shareWifi() {
+  if (!panelOnline || running || WiFi.status() != WL_CONNECTED || millis() - lastWifiShare < 20000) return;
+  String ssid = WiFi.SSID(), pass = WiFi.psk();
+  if (panelNet == linkNetHash(ssid.c_str(), pass.c_str())) return;
+  lastWifiShare = millis();
+  LinkMsg m = {};
+  m.type = LINK_WIFI;
+  m.nonce = panelNonce;
+  m.req = esp_random();
+  strlcpy(m.cred, ssid.c_str(), 33);
+  strlcpy(m.cred + 33, pass.c_str(), 65);
+  linkCrypt(m);  // encrypt
+  linkSend(m);
+  Serial.println("Wi-Fi sent to the panel");
+}
+
 void loop() {
   applyStatus();
+  shareWifi();
   if (panelOnline && millis() - panelSeenMs > PANEL_LOST_MS) panelOnline = false;
   if (running && millis() - runStart >= runMs + 3000) running = false;  // panel gone mid-wash: it still stops on its own
   if (millis() - lastHello >= HELLO_MS) {
