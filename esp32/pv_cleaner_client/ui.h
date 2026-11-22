@@ -5,7 +5,6 @@
 #pragma once
 #include <LovyanGFX.hpp>
 
-void relays(bool on);
 void wifiSetup(bool force);
 void pollNow();
 long long isoToEpoch(const char* s);
@@ -201,7 +200,7 @@ static int washesToday() {
   time_t n = time(nullptr);
   if (n < 1700000000) return 0;
   long today = (long)((n + 3 * 3600) / 86400);
-  return prefs.getLong("day", -1) == today ? prefs.getInt("count", 0) : 0;
+  return panelOnline && today == (long)((panelLastRun + 3 * 3600) / 86400) ? panelCount : 0;
 }
 
 // English text for the decision reason
@@ -408,8 +407,8 @@ static void drawForecast() {
 
 // ---------- Wash screen ----------
 static void lastWashText(char* o, size_t n) {
-  // newest of: server's last_clean and the last run saved on this device (auto or manual)
-  long long a = lastClean[0] ? isoToEpoch(lastClean) : -1, b = prefs.getLong64("last_run", 0);
+  // newest of: server's last_clean and the panel's last run (auto or manual)
+  long long a = lastClean[0] ? isoToEpoch(lastClean) : -1, b = panelLastRun;
   long long e = max(a, b);
   if (e < 1700000000) { snprintf(o, n, "-"); return; }
   time_t d = (time_t)e + 3 * 3600;
@@ -463,30 +462,24 @@ static void drawWash() {
   if (confirmOpen) drawConfirm();
 }
 
-// manual wash: same local limits as the server command, 1 minute, never touches last_id and sends no ack
+// manual wash: ask the panel controller (it checks the 6 h gap / 2 per day itself and answers)
 static void startManualWash() {
   confirmOpen = false;
   washMsg[0] = 0;
-  time_t now = time(nullptr);
+  LinkMsg m = {};
+  m.type = LINK_WASH_REQ;
   if (running) snprintf(washMsg, sizeof washMsg, "Already washing");
-  else if (now < 1700000000) snprintf(washMsg, sizeof washMsg, "Clock not set yet");
-  else {
-    long today = (long)((now + 3 * 3600) / 86400);
-    int countToday = prefs.getLong("day", -1) == today ? prefs.getInt("count", 0) : 0;
-    if ((long long)now - prefs.getLong64("last_run", 0) < MIN_GAP_S || countToday >= MAX_PER_DAY)
-      snprintf(washMsg, sizeof washMsg, "Limit reached (6 h gap / 2 per day)");
-    else {
-      prefs.putLong64("last_run", (int64_t)now);
-      prefs.putLong("day", today);
-      prefs.putInt("count", countToday + 1);
-      runMs = 60000UL;
-      runStart = millis();
-      running = true;
-      relays(true);
-      Serial.println("MANUAL wash start for 1 min");
-    }
-  }
+  else if (!panelOnline) snprintf(washMsg, sizeof washMsg, "Panel controller offline");
+  else if (time(nullptr) < 1700000000) snprintf(washMsg, sizeof washMsg, "Clock not set yet");
+  else if (!linkSend(m)) snprintf(washMsg, sizeof washMsg, "Could not reach the panel");
+  else snprintf(washMsg, sizeof washMsg, "Asking the panel...");
   washMsgUntil = millis() + 6000;
+}
+void uiWashResult(bool ok, const char* text) {
+  snprintf(washMsg, sizeof washMsg, "%s", ok ? "" : text);
+  washMsgUntil = millis() + 6000;
+  Serial.printf("panel answer: %s\n", text);
+  if (scr == SCR_WASH && !confirmOpen) drawWashRight();
 }
 
 // ---------- Device screen ----------
@@ -520,7 +513,8 @@ static void drawDevRows(bool labels) {
     if (m < 1) snprintf(b, sizeof b, "just now"); else snprintf(b, sizeof b, "%lu min ago", m);
   }
   devRow(3, "Last check", b, C_FG, false, 0, labels);
-  devRow(4, "Relays", running ? "ON" : "off", running ? C_OK : C_FG, false, 0, labels);
+  devRow(4, "Panel", running ? "washing" : panelOnline ? "ready" : "offline", running ? C_OK : panelOnline ? C_FG : C_BAD,
+         true, running ? C_OK : panelOnline ? C_OK : C_BAD, labels);
   unsigned long s = millis() / 1000UL;
   snprintf(b, sizeof b, "Up %lu d %lu h %lu min", s / 86400, (s / 3600) % 24, (s / 60) % 60);
   tft.fillRect(290, 190, 190, 24, C_BG);
