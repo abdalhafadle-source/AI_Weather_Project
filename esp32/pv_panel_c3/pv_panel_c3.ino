@@ -34,10 +34,12 @@ const unsigned long RINSE_MS = 15UL * 1000;    // pump alone at the end: rinse t
 const unsigned long STATUS_MS = 2000;
 const unsigned long LOST_MS = 60000;           // handheld not heard this long -> leave Wi-Fi and search for it
 const unsigned long HOP_MS = 250;              // time on each channel while searching
+const unsigned long JOIN_MS = 15000;           // one try to join a network; then give up and ask for it again
 
 unsigned long runStart = 0, runMs = 0, lastStatus = 0, lastHello = 0, lastHop = 0;
-bool running = false, locked = false;
-int channel = 1;
+bool running = false, locked = false, joining = false;
+unsigned long joinStart = 0;
+int channel = 1, lockCh = 1;  // lockCh = the channel the handheld was found on
 uint32_t nonce, net = 0;  // net = fingerprint of the saved network (0 = none)
 
 // the radio callback only copies; loop() acts
@@ -65,6 +67,14 @@ bool savedNetwork(char* ssid, char* pass) {  // the network saved in flash by an
   strlcpy(ssid, (const char*)c.sta.ssid, 33);
   strlcpy(pass, (const char*)c.sta.password, 65);
   return true;
+}
+
+// one try to join a network (saved one when ssid is null). While trying, the radio leaves the handheld's channel.
+void startJoin(const char* ssid, const char* pass) {
+  if (ssid) WiFi.begin(ssid, pass);  // saved in flash: used again after every restart
+  else WiFi.begin();
+  joining = true;
+  joinStart = millis();
 }
 
 void sendStatus() {
@@ -111,7 +121,7 @@ void handleWifi(LinkMsg m) {
   if (!ssid[0]) return;
   Serial.printf("Wi-Fi from the handheld: \"%s\" -> joining\n", ssid);
   net = linkNetHash(ssid, pass);
-  WiFi.begin(ssid, pass);  // saved in flash: used again after every restart
+  startJoin(ssid, pass);
 }
 
 void setup() {
@@ -130,7 +140,10 @@ void setup() {
     for (int i = 0; i < 40 && WiFi.status() != WL_CONNECTED; i++) delay(250);
   }
   if (WiFi.status() == WL_CONNECTED) channel = WiFi.channel();
-  else setChannel(1);
+  else {
+    WiFi.disconnect(false, false);  // stop trying for now: it would keep the radio busy scanning
+    setChannel(1);
+  }
   linkBegin(onLink);
 }
 
@@ -149,11 +162,12 @@ void loop() {
   if (rxHello) {
     rxHello = false;
     lastHello = millis();
-    if (!locked) Serial.printf("handheld found on channel %d\n", channel);
-    locked = true;
-    if (WiFi.status() != WL_CONNECTED && net && !running) {  // found it again: rejoin the saved network
-      WiFi.begin();
+    if (!locked) {
+      Serial.printf("handheld found on channel %d\n", channel);
+      lockCh = channel;
+      if (WiFi.status() != WL_CONNECTED && net && !running && !joining) startJoin(nullptr, nullptr);  // rejoin once
     }
+    locked = true;
   }
   if (rxRun) {
     LinkMsg m = runMsg;
@@ -166,13 +180,22 @@ void loop() {
     handleWifi(m);
   }
   bool onWifi = WiFi.status() == WL_CONNECTED;
-  if (onWifi) channel = WiFi.channel();  // the router decides the channel
+  if (onWifi) {
+    channel = WiFi.channel();  // the router decides the channel
+    if (joining) { joining = false; Serial.printf("Wi-Fi joined, channel %d\n", channel); }
+  } else if (joining && millis() - joinStart > JOIN_MS) {  // could not join: back to the handheld, ask again
+    joining = false;
+    net = 0;  // the handheld sees "no network" and sends its own
+    WiFi.disconnect(false, false);
+    setChannel(lockCh);
+    Serial.println("could not join the network -> asking the handheld for it");
+  }
   if (locked && millis() - lastHello > LOST_MS) {
     locked = false;
     Serial.println("handheld lost -> searching");
     if (onWifi && !running) { WiFi.disconnect(false, false); onWifi = false; }  // maybe it moved to another network
   }
-  if (!onWifi && !locked && millis() - lastHop >= HOP_MS) {  // listen on channels 1..13 in turn
+  if (!onWifi && !joining && !locked && millis() - lastHop >= HOP_MS) {  // listen on channels 1..13 in turn
     lastHop = millis();
     setChannel(channel % 13 + 1);
   }
