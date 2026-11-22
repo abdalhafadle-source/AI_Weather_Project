@@ -1,14 +1,14 @@
 // pv_cleaner_client.ino
-// The HANDHELD screen of the Hilla PV-cleaning AI (since 2026-11-22). It no longer drives any relay: the panel
-// controller (esp32/pv_panel_c3, ESP32-C3 next to the pump) reads the server and runs the pump and the brush.
-// This device shows the command, the forecast and the panel's state (ESP-NOW status every 3 s, espnow_link.h),
-// and "Wash now" asks the panel for a 1-minute wash; the panel checks its own limits and answers.
+// The handheld of the Hilla PV-cleaning AI (ESP32 + touch screen): THE BRAIN. Every 14 min it reads the command
+// that our VPS writes every hour; when it says "clean" (with a command_id not run before) it tells the panel
+// controller (esp32/pv_panel_c3, ESP32-C3 next to the pump) to wash, over ESP-NOW (espnow_link.h, signed with
+// ACK_KEY). The panel runs the pump and then the brush and answers; only after that answer is the wash counted
+// and the server told (POST /ack). If the panel does not answer, nothing is saved and the next poll tries again.
 //
 // Board: ESP32 (Arduino core). Libraries are bundled in this folder (ArduinoJson, WiFiManager by tzapu, MIT).
 // Screen: 3.5" 480x320 touch screen (ILI9488 + XPT2046) drawn by ui.h with LovyanGFX 1.3.0, which lives in
-// esp32/libraries (not in git): arduino-cli lib download LovyanGFX, then unzip it there. Wiring (SPI, VSPI):
-//   (carrier board cad/pcb) screen: SCK 16, MOSI 4, CS 15, DC 2, RESET + LED + VCC on 3V3, SDO not connected
-//   touch (own bus): T_CLK 17, T_DIN 18, T_DO 19, T_CS 5, T_IRQ 21
+// esp32/libraries (not in git): arduino-cli lib download LovyanGFX, then unzip it there. Wiring: see ui.h
+// (PINS_BREADBOARD switch: breadboard now, carrier board cad/pcb later).
 // First start (or finger held on the screen for the first 3 s): "Touch the arrows to calibrate", saved in flash.
 // Wi-Fi is set from a phone, no re-upload needed (WiFiManager): when the saved network is not reachable, the
 // ESP32 opens its own network "Hilla-PV-Setup" (password PORTAL_PASS in secrets.h) for 3 minutes; join it,
@@ -19,10 +19,8 @@
 //   - no answer / bad answer / no Wi-Fi  -> do nothing
 //   - clock not synced yet (NTP) or command past valid_until -> do nothing
 //   - same command_id is never run twice (saved in flash, survives a reboot)
-//   - a run never lasts longer than HARD_CAP_MS (30 min), whatever the command says
+//   - a run never lasts longer than HARD_CAP_MS (30 min), whatever the command says (the panel caps it too)
 //   - at most 2 runs per day and 6 h between runs, even if the command file says otherwise
-//   - all relays OFF at boot
-//   (washing safety now lives on the panel controller; this screen never switches anything itself)
 
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
@@ -42,38 +40,79 @@
 #include "espnow_link.h"  // signed radio messages to/from the panel controller
 
 const char* COMMAND_URL = "https://hilla-ai.duckdns.org/command";  // our VPS, encrypted
+const char* ACK_URL = "https://hilla-ai.duckdns.org/ack";
 const char* PORTAL_NAME = "Hilla-PV-Setup";  // the ESP32's own network for Wi-Fi setup
 const int PORTAL_S = 180;                    // setup network stays open 3 min, then it tries again later
 const int SETUP_BUTTON = 0;                  // BOOT button (GPIO0): hold 3 s to open the setup network
 const int WIFI_FAILS_TO_PORTAL = 3;          // polls in a row without Wi-Fi (~42 min) -> open the setup network
 
 const unsigned long POLL_MS = 14UL * 60 * 1000;         // a new command appears once per hour
-const long MIN_GAP_S = 6L * 3600;  // the panel's limits, shown on the screen
-const int MAX_PER_DAY = 2;
-const unsigned long PANEL_LOST_MS = 15000;  // no status from the panel for this long -> "offline"
+const unsigned long CLEAN_CYCLE_MS = 30UL * 60 * 1000;  // your normal cleaning cycle length
+const unsigned long HARD_CAP_MS = 30UL * 60 * 1000;     // absolute maximum run time
+const long MIN_GAP_S = 6L * 3600;  // same caps as decision.py, enforced here too in case the command
+const int MAX_PER_DAY = 2;         // file is ever wrong or tampered with
+const unsigned long HELLO_MS = 1000;        // heartbeat to the panel (it finds our radio channel by it)
+const unsigned long PANEL_LOST_MS = 10000;  // no status from the panel for this long -> "offline"
 
 Preferences prefs;
-unsigned long lastPoll = 0, runStart = 0, runMs = 0;
+unsigned long lastPoll = 0, runStart = 0, runMs = 0, lastHello = 0;
 bool running = false, polledOnce = false;
 int wifiFails = 0;
-// panel state from its ESP-NOW status (the radio callback only copies; loop() applies it)
+
+// panel controller state, from its STATUS messages (the radio callback only copies; loop() applies it)
 bool panelOnline = false;
 unsigned long panelSeenMs = 0;
-int panelCount = 0;
-long long panelLastRun = 0;
+uint32_t panelNonce = 0;
 volatile bool rxStatus = false, rxResult = false;
 LinkMsg rxMsg, rxRes;
-uint32_t rxSeq = 0, rxTs = 0;
 void onLink(const uint8_t* mac, const uint8_t* data, int len) {
   LinkMsg m;
-  if (!linkCheck(data, len, m, rxSeq, rxTs)) return;
+  if (!linkVerify(data, len, m)) return;
   if (m.type == LINK_STATUS) { rxMsg = m; rxStatus = true; }
-  else if (m.type == LINK_WASH_RESULT) { rxRes = m; rxResult = true; }
+  else if (m.type == LINK_RESULT) { rxRes = m; rxResult = true; }
 }
+void applyStatus() {
+  if (!rxStatus) return;
+  rxStatus = false;
+  LinkMsg m = rxMsg;
+  panelOnline = true;
+  panelSeenMs = millis();
+  panelNonce = m.nonce;
+  running = m.running;
+  if (running) { runMs = m.runMs; runStart = millis() - (m.runMs - m.ms); }
+}
+
+// ask the panel to wash for ms; waits up to ~3 s for its answer. why = reason when it did not start.
+bool panelRun(unsigned long ms, char* why, size_t n) {
+  applyStatus();
+  if (!panelOnline) { snprintf(why, n, "Panel controller offline"); return false; }
+  for (int attempt = 0; attempt < 2; attempt++) {
+    LinkMsg m = {};
+    m.type = LINK_RUN;
+    m.nonce = panelNonce;
+    m.req = esp_random();
+    m.ms = min(ms, HARD_CAP_MS);
+    rxResult = false;
+    linkSend(m);
+    for (int i = 0; i < 75; i++) {  // 1.5 s
+      delay(20);
+      if (rxResult && rxRes.req == m.req) {
+        rxResult = false;
+        snprintf(why, n, "%s", rxRes.text);
+        if (rxRes.ok) { running = true; runMs = m.ms; runStart = millis(); }
+        return rxRes.ok;
+      }
+    }
+    applyStatus();  // a fresh nonce may have arrived: try once more with it
+  }
+  snprintf(why, n, "No answer from the panel");
+  return false;
+}
+
 #include "ui.h"  // touch screen: needs the globals above
 
-// connect to the saved network; if that fails, open the setup network for PORTAL_S seconds (relays stay OFF:
-// only called while not cleaning). force = open the setup network even if the saved one works.
+// connect to the saved network; if that fails, open the setup network for PORTAL_S seconds
+// (only called while not cleaning). force = open the setup network even if the saved one works.
 void wifiSetup(bool force) {
   WiFiManager wm;
   wm.setConfigPortalTimeout(PORTAL_S);
@@ -82,7 +121,7 @@ void wifiSetup(bool force) {
   Serial.printf("Wi-Fi setup: if no network, join \"%s\" from a phone\n", PORTAL_NAME);
   bool ok = force ? wm.startConfigPortal(PORTAL_NAME, PORTAL_PASS) : wm.autoConnect(PORTAL_NAME, PORTAL_PASS);
   Serial.println(ok ? "Wi-Fi connected" : "Wi-Fi setup timed out -> will try again later");
-  if (ok) Serial.println(linkBegin(onLink) ? "ESP-NOW ready" : "ESP-NOW failed");
+  Serial.println(linkBegin(onLink) ? "ESP-NOW ready" : "ESP-NOW failed");  // on the (new) radio channel
   uiWifiDone();
 }
 
@@ -111,22 +150,55 @@ bool fetchCommand(JsonDocument& doc) {
   if (!wifiReady()) return false;
   // a certificate can only be checked with a correct clock: wait up to 15 s for the internet time (NTP)
   for (int i = 0; i < 30 && time(nullptr) < 1700000000; i++) delay(500);
-  WiFiClient plain;
   WiFiClientSecure tls;
   tls.setCACert(ROOT_CAS);  // accept only a server with a valid Let's Encrypt certificate
-  WiFiClient& client = strncmp(COMMAND_URL, "https", 5) == 0 ? static_cast<WiFiClient&>(tls) : plain;
   HTTPClient http;
   http.setConnectTimeout(30000);
   http.setTimeout(30000);
-  if (!http.begin(client, COMMAND_URL)) return false;
-  http.setUserAgent("HillaPV-Screen");  // not "ESP32": the server counts only the panel controller as the device
+  if (!http.begin(tls, COMMAND_URL)) return false;
+  http.addHeader("X-Key", ACK_KEY);                             // proves it is our ESP32
+  http.addHeader("X-Last-Id", prefs.getString("last_id", ""));  // the last command we really ran (backup if an ack got lost)
   int code = http.GET();
   bool ok = code == 200 && deserializeJson(doc, http.getString()) == DeserializationError::Ok;
   http.end();
   return ok;
 }
 
-// read the command for the screen only: the panel controller runs it
+// tell the server this command really started; a failure here never stops the wash
+void sendAck(const char* id) {
+  WiFiClientSecure tls;
+  tls.setCACert(ROOT_CAS);
+  HTTPClient http;
+  http.setConnectTimeout(10000);
+  http.setTimeout(10000);
+  if (!http.begin(tls, ACK_URL)) return;
+  http.addHeader("Content-Type", "application/json");
+  http.addHeader("X-Key", ACK_KEY);
+  int code = http.POST(String("{\"command_id\":\"") + id + "\"}");
+  Serial.printf("ack -> %d\n", code);
+  http.end();
+}
+
+// the local limits (auto and manual washes together); returns the reason when not allowed, or nullptr
+const char* washBlocked() {
+  time_t now = time(nullptr);
+  if (running) return "Already washing";
+  if (now < 1700000000) return "Clock not set yet";
+  long today = (long)((now + 3 * 3600) / 86400);  // Baghdad calendar day
+  int countToday = prefs.getLong("day", -1) == today ? prefs.getInt("count", 0) : 0;
+  if ((long long)now - prefs.getLong64("last_run", 0) < MIN_GAP_S || countToday >= MAX_PER_DAY)
+    return "Limit reached (6 h gap / 2 per day)";
+  return nullptr;
+}
+void countWash() {
+  time_t now = time(nullptr);
+  long today = (long)((now + 3 * 3600) / 86400);
+  int countToday = prefs.getLong("day", -1) == today ? prefs.getInt("count", 0) : 0;
+  prefs.putLong64("last_run", (int64_t)now);
+  prefs.putLong("day", today);
+  prefs.putInt("count", countToday + 1);
+}
+
 void poll() {
   JsonDocument doc;
   bool ok = fetchCommand(doc);
@@ -136,11 +208,38 @@ void poll() {
   }
   if (!ok) {
     uiPollResult(false);
-    Serial.println("no command");
+    Serial.println("no command -> do nothing");
     return;
   }
   uiStoreCommand(doc);
-  Serial.printf("action=%s id=%s reason=%s\n", doc["action"] | "wait", doc["command_id"] | "", doc["reason"] | "");
+  const char* action = doc["action"] | "wait";
+  const char* id = doc["command_id"] | "";
+  const char* reason = doc["reason"] | "";
+  Serial.printf("action=%s id=%s reason=%s\n", action, id, reason);
+
+  if (strcmp(action, "clean") != 0 || id[0] == '\0') return;
+  long long until = isoToEpoch(doc["valid_until"] | "");
+  time_t now = time(nullptr);
+  if (now < 1700000000 || until < 0 || (long long)now > until) {  // clock not synced, unreadable, or expired
+    Serial.println("clean command expired or clock not set -> do nothing");
+    return;
+  }
+  if (prefs.getString("last_id", "") == id) return;  // this command was already executed
+  const char* why = washBlocked();
+  if (why) {
+    Serial.printf("local safety cap: %s -> do nothing\n", why);
+    return;
+  }
+  unsigned long serverMax = (unsigned long)(doc["max_duration_min"] | 30) * 60000UL;
+  char ans[40];
+  if (!panelRun(min(CLEAN_CYCLE_MS, min(serverMax, HARD_CAP_MS)), ans, sizeof ans)) {
+    Serial.printf("panel did not start (%s) -> next poll tries again\n", ans);
+    return;  // nothing saved: the same command is tried again while it is valid
+  }
+  prefs.putString("last_id", id);
+  countWash();
+  Serial.printf("CLEAN started on the panel for %lu min\n", runMs / 60000UL);
+  sendAck(id);
 }
 
 // poll with "Updating..." on the screen, then the extra status request (forecast bars) for the screen
@@ -164,18 +263,15 @@ void setup() {
 }
 
 void loop() {
-  if (rxStatus) {  // the panel's state: washing or not, time left, washes today
-    rxStatus = false;
-    LinkMsg m = rxMsg;
-    panelOnline = true;
-    panelSeenMs = millis();
-    panelCount = m.countToday;
-    panelLastRun = m.lastRun;
-    running = m.running;
-    if (running) { runMs = m.runMs; runStart = millis() - (m.runMs - m.leftMs); }
+  applyStatus();
+  if (panelOnline && millis() - panelSeenMs > PANEL_LOST_MS) panelOnline = false;
+  if (running && millis() - runStart >= runMs + 3000) running = false;  // panel gone mid-wash: it still stops on its own
+  if (millis() - lastHello >= HELLO_MS) {
+    lastHello = millis();
+    LinkMsg m = {};
+    m.type = LINK_HELLO;
+    linkSend(m);
   }
-  if (rxResult) { rxResult = false; uiWashResult(rxRes.ok, rxRes.text); }
-  if (panelOnline && millis() - panelSeenMs > PANEL_LOST_MS) { panelOnline = false; running = false; }
   if (!running && digitalRead(SETUP_BUTTON) == LOW) {  // BOOT held 3 s -> Wi-Fi setup network
     delay(3000);
     if (digitalRead(SETUP_BUTTON) == LOW) wifiSetup(true);

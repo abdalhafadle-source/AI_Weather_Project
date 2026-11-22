@@ -7,6 +7,8 @@
 
 void wifiSetup(bool force);
 void pollNow();
+const char* washBlocked();
+void countWash();
 long long isoToEpoch(const char* s);
 
 // ---------- hardware: which wiring? 1 = breadboard (now), 0 = carrier board cad/pcb (after it is built) ----------
@@ -200,7 +202,7 @@ static int washesToday() {
   time_t n = time(nullptr);
   if (n < 1700000000) return 0;
   long today = (long)((n + 3 * 3600) / 86400);
-  return panelOnline && today == (long)((panelLastRun + 3 * 3600) / 86400) ? panelCount : 0;
+  return prefs.getLong("day", -1) == today ? prefs.getInt("count", 0) : 0;
 }
 
 // English text for the decision reason
@@ -407,8 +409,8 @@ static void drawForecast() {
 
 // ---------- Wash screen ----------
 static void lastWashText(char* o, size_t n) {
-  // newest of: server's last_clean and the panel's last run (auto or manual)
-  long long a = lastClean[0] ? isoToEpoch(lastClean) : -1, b = panelLastRun;
+  // newest of: server's last_clean and the last run saved on this device (auto or manual)
+  long long a = lastClean[0] ? isoToEpoch(lastClean) : -1, b = prefs.getLong64("last_run", 0);
   long long e = max(a, b);
   if (e < 1700000000) { snprintf(o, n, "-"); return; }
   time_t d = (time_t)e + 3 * 3600;
@@ -462,24 +464,20 @@ static void drawWash() {
   if (confirmOpen) drawConfirm();
 }
 
-// manual wash: ask the panel controller (it checks the 6 h gap / 2 per day itself and answers)
+// manual wash: same local limits as the server command, 1 minute, run by the panel controller;
+// never touches last_id and sends no ack
 static void startManualWash() {
   confirmOpen = false;
   washMsg[0] = 0;
-  LinkMsg m = {};
-  m.type = LINK_WASH_REQ;
-  if (running) snprintf(washMsg, sizeof washMsg, "Already washing");
-  else if (!panelOnline) snprintf(washMsg, sizeof washMsg, "Panel controller offline");
-  else if (time(nullptr) < 1700000000) snprintf(washMsg, sizeof washMsg, "Clock not set yet");
-  else if (!linkSend(m)) snprintf(washMsg, sizeof washMsg, "Could not reach the panel");
-  else snprintf(washMsg, sizeof washMsg, "Asking the panel...");
+  const char* why = washBlocked();
+  char ans[40];
+  if (why) snprintf(washMsg, sizeof washMsg, "%s", why);
+  else if (!panelRun(60000UL, ans, sizeof ans)) snprintf(washMsg, sizeof washMsg, "%s", ans);
+  else {
+    countWash();
+    Serial.println("MANUAL wash started on the panel for 1 min");
+  }
   washMsgUntil = millis() + 6000;
-}
-void uiWashResult(bool ok, const char* text) {
-  snprintf(washMsg, sizeof washMsg, "%s", ok ? "" : text);
-  washMsgUntil = millis() + 6000;
-  Serial.printf("panel answer: %s\n", text);
-  if (scr == SCR_WASH && !confirmOpen) drawWashRight();
 }
 
 // ---------- Device screen ----------
