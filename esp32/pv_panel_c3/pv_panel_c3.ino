@@ -135,5 +135,11 @@ void loop() {
     lastStatus = millis();
     sendStatus();
   }
+  static unsigned long lastLog = 0;  // a line every 5 s on the USB serial monitor
+  if (millis() - lastLog >= 5000) {
+    lastLog = millis();
+    Serial.printf("panel: %s, channel %d, %s\n", locked ? "handheld found" : "searching for the handheld", channel,
+                  running ? "WASHING" : "relays off");
+  }
   delay(5);
 }
