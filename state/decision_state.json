@@ -1,8 +1,10 @@
 {
   "storm": false,
   "raining": false,
-  "pending": [],
-  "event_end": null,
+  "pending": [
+    "dust"
+  ],
+  "event_end": "2026-11-24T09:00:00",
   "cleans": [
     "2026-10-31T05:00:00",
     "2026-11-01T16:00:00",
@@ -10,6 +12,6 @@
     "2026-11-17T16:00:00"
   ],
   "last_end": "2026-11-17T15:00:00",
-  "pending_since": null,
-  "last_hour": "2026-11-22T03:00:00"
+  "pending_since": "2026-11-24T08:00:00",
+  "last_hour": "2026-11-25T03:00:00"
 }
