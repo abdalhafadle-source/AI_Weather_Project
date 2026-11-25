@@ -6,7 +6,7 @@ Wiring diagram for the BREADBOARD build (jumper wires, no etched board), as the 
 on/off switch and MT3608 boost (5.0 V) for the handheld; and the ESP32-C3 at the panels with the two relays
 (it gets its orders from the handheld over ESP-NOW, no wire between them).
 
-Usage (needs: pip install matplotlib arabic-reshaper python-bidi):
+Usage (needs: pip install matplotlib>=3.11):
     python cad/make_wiring_breadboard.py        # writes cad/wiring_breadboard.png
 """
 from __future__ import annotations
@@ -14,9 +14,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-import arabic_reshaper
 import matplotlib
-from bidi.algorithm import get_display
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -31,8 +29,8 @@ for _s in (sys.stdout, sys.stderr):
         pass
 
 
-def ar(s):
-    return get_display(arabic_reshaper.reshape(s))
+def ar(s):  # matplotlib 3.11 shapes and orders Arabic itself (reshaping again reversed it)
+    return s
 
 
 # screen header, in the order printed on the screen board (top to bottom), and where each pin goes

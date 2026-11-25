@@ -6,22 +6,20 @@ from the FRONT (metal can and antenna on top, USB-C at the bottom): every screen
 its pin, with the same colour at both ends and the name written at both ends. Pins as in the firmware now
 (ui.h, PINS_BREADBOARD 1). Power (TP4056, switch, MT3608) and the ESP32-C3 relay box at the bottom.
 
-Usage (needs: pip install matplotlib arabic-reshaper python-bidi):
+Usage (needs: pip install matplotlib>=3.11):
     python cad/make_wiring_esp32_real.py        # writes cad/wiring_esp32_real.png and .pdf
 """
 import sys
 from pathlib import Path
 
-import arabic_reshaper
 import matplotlib
-from bidi.algorithm import get_display
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.patches import FancyBboxPatch, Rectangle
 
 OUT = Path(__file__).resolve().parent / "wiring_esp32_real"
-ar = lambda s: get_display(arabic_reshaper.reshape(s))
+ar = lambda s: s  # matplotlib 3.11 shapes and orders Arabic itself (reshaping again reversed it)
 
 # front view (chip up, antenna top, USB-C bottom), top to bottom - from the photo of the board (2026-11-23)
 LEFT = ["3V3", "EN", "SVP", "SVN", "34", "35", "32", "33", "25", "26", "27", "14", "12", "GND", "13", "SD2", "SD3", "CMD", "5V"]
@@ -128,7 +126,9 @@ def main() -> int:
     for j, t in enumerate(["GPIO 4 -> IN1 (pump)", "GPIO 5 -> IN2 (brush)", "5V / GND -> relay VCC / GND"]):
         ax.text(11, 15 - j * 4.5, t, fontsize=7.5, family="monospace")
     fig.savefig(OUT.with_suffix(".png"), dpi=200)
-    fig.savefig(OUT.with_suffix(".pdf"))
+    # the PDF is made from the picture: Arabic stored as PDF text shows reversed in some viewers
+    from PIL import Image
+    Image.open(OUT.with_suffix(".png")).convert("RGB").save(OUT.with_suffix(".pdf"), resolution=200)
     plt.close(fig)
     print(f"saved {OUT}.png / .pdf")
     return 0

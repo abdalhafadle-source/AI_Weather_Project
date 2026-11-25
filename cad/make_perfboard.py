@@ -12,15 +12,13 @@ Usage:  python cad/make_perfboard.py      -> cad/perfboard_1to1.png and .pdf (A4
 import sys
 from pathlib import Path
 
-import arabic_reshaper
 import matplotlib
-from bidi.algorithm import get_display
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 OUT = Path(__file__).resolve().parent / "perfboard_1to1"
-ar = lambda s: get_display(arabic_reshaper.reshape(s))
+ar = lambda s: s  # matplotlib 3.11 shapes and orders Arabic itself (reshaping again reversed it)
 PITCH = 2.54
 COLS, ROWS = 30, 24          # 7 x 9 cm perfboard, used sideways
 
@@ -129,7 +127,9 @@ def main() -> int:
         ax.plot([10 + 10 * k] * 2, [20, 22.5 if k % 5 == 0 else 21.5], color="black", lw=0.8)
     ax.text(35, 24, "50 mm", ha="center", fontsize=8)
     fig.savefig(OUT.with_suffix(".png"), dpi=300)
-    fig.savefig(OUT.with_suffix(".pdf"))
+    # the PDF is made from the picture: Arabic stored as PDF text shows reversed in some viewers
+    from PIL import Image
+    Image.open(OUT.with_suffix(".png")).convert("RGB").save(OUT.with_suffix(".pdf"), resolution=300)
     plt.close(fig)
     print(f"saved {OUT}.png / .pdf")
     return 0
