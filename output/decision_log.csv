@@ -552,3 +552,27 @@ command_id,action,reason,p_rain,p_dust,pm10,metar_strong,metar_haze,metar_min_vi
 2026-11-24T01:00:00+03:00,idle,dust in air (airport),0.002,0.017,50.1,False,True,5.0
 2026-11-24T02:00:00+03:00,idle,nothing to clean,0.002,0.007,50.7,False,False,10.0
 2026-11-24T03:00:00+03:00,idle,nothing to clean,0.004,0.008,54.3,False,False,5.0
+2026-11-24T04:00:00+03:00,idle,nothing to clean,0.002,0.018,57.6,False,False,5.0
+2026-11-24T05:00:00+03:00,idle,nothing to clean,0.001,0.019,59.7,False,False,5.0
+2026-11-24T06:00:00+03:00,idle,nothing to clean,0.002,0.02,59.6,False,False,5.0
+2026-11-24T07:00:00+03:00,idle,nothing to clean,0.004,0.014,62.8,False,False,5.0
+2026-11-24T08:00:00+03:00,wait,dust storm,0.017,0.423,67.0,True,False,2.0
+2026-11-24T09:00:00+03:00,wait,dust storm,0.015,0.449,69.0,True,False,2.0
+2026-11-24T10:00:00+03:00,wait,dust in air (airport),0.007,0.097,76.2,False,True,2.99
+2026-11-24T11:00:00+03:00,wait,dust in air (airport),0.009,0.09,82.3,False,True,2.99
+2026-11-24T12:00:00+03:00,wait,dust in air (airport),0.015,0.09,85.1,False,True,2.99
+2026-11-24T13:00:00+03:00,wait,device offline,0.014,0.032,79.0,False,False,5.0
+2026-11-24T14:00:00+03:00,wait,dust in air (airport),0.013,0.019,72.1,False,True,5.0
+2026-11-24T15:00:00+03:00,wait,device offline,0.009,0.014,67.0,False,False,5.0
+2026-11-24T16:00:00+03:00,wait,device offline,0.008,0.01,64.1,False,False,6.0
+2026-11-24T17:00:00+03:00,wait,device offline,0.013,0.027,61.8,False,False,6.0
+2026-11-24T18:00:00+03:00,wait,device offline,0.01,0.016,60.0,False,False,6.0
+2026-11-24T19:00:00+03:00,wait,device offline,0.013,0.021,59.7,False,False,10.0
+2026-11-24T20:00:00+03:00,wait,device offline,0.004,0.008,63.8,False,False,6.0
+2026-11-24T21:00:00+03:00,wait,device offline,0.001,0.012,64.7,False,False,6.0
+2026-11-24T22:00:00+03:00,wait,device offline,0.001,0.011,56.2,False,False,5.0
+2026-11-24T23:00:00+03:00,wait,dust in air (airport),0.004,0.031,54.1,False,True,4.01
+2026-11-25T00:00:00+03:00,wait,dust in air (airport),0.003,0.036,55.9,False,True,4.01
+2026-11-25T01:00:00+03:00,wait,device offline,0.003,0.018,56.0,False,False,6.0
+2026-11-25T02:00:00+03:00,wait,device offline,0.002,0.015,51.3,False,False,6.0
+2026-11-25T03:00:00+03:00,wait,device offline,0.002,0.016,49.3,False,False,7.0
