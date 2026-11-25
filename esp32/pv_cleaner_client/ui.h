@@ -1,4 +1,4 @@
-// ui.h - touch screen for the Hilla PV cleaner (3.5" ILI9488 480x320 + XPT2046 touch), LovyanGFX.
+// ui.h - touch screen for the Hilla PV cleaner (3.5" ILI9488 320x480 portrait + XPT2046 touch), LovyanGFX.
 // Included once by pv_cleaner_client.ino, after its globals (prefs, running, runStart, runMs, lastPoll, polledOnce).
 // The screen only shows data and can start a 1-minute manual wash under the SAME local limits (6 h gap, 2 per day).
 // Nothing here changes the safety rules; the relay stop-on-time logic stays in loop() of the .ino.
@@ -123,9 +123,12 @@ static const uint32_t C_BG = 0x0b1018, C_CARD = 0x141c27, C_LINE = 0x223042, C_F
 #define FB9 (&fonts::FreeSansBold9pt7b)
 #define FB12 (&fonts::FreeSansBold12pt7b)
 #define FB18 (&fonts::FreeSansBold18pt7b)
-static const int TOP_H = 30, NAV_Y = 274, NAV_H = 46;
+// portrait 320 x 480 (design "Portrait-*" on the claude.ai canvas). UI_ROT 0 = header pins at the top; 2 = upside down
+#define UI_ROT 0
+static const int SW = 320, SH = 480;
+static const int TOP_H = 30, NAV_H = 52, NAV_Y = SH - NAV_H;
 enum { SCR_STATUS, SCR_FORECAST, SCR_WASH, SCR_DEVICE, SCR_WEB, SCR_N };
-static const int TAB_W = 480 / SCR_N;
+static const int TAB_W = SW / SCR_N;
 static int scr = SCR_STATUS;
 static bool confirmOpen = false, busy = false, lastRun = false;
 static char washMsg[44] = "";
@@ -236,19 +239,19 @@ static const char* routineText(char* o, size_t n, uint32_t* col) {
 
 // ---------- top bar and navigation ----------
 static void drawTop() {
-  tft.fillRect(0, 0, 480, TOP_H - 1, C_BG);
-  tft.drawFastHLine(0, TOP_H - 1, 480, C_LINE);
-  txt("HILLA PV", 14, 15, FB9, C_FG);
+  tft.fillRect(0, 0, SW, TOP_H - 1, C_BG);
+  tft.drawFastHLine(0, TOP_H - 1, SW, C_LINE);
+  txt("HILLA PV", 12, 15, FB9, C_FG);
   char b[32];
   struct tm t;
-  if (busy) txt("Updating...", 430, 15, F9, C_DUST, textdatum_t::middle_right);
+  if (busy) txt("Updating...", 274, 15, F9, C_DUST, textdatum_t::middle_right);
   else {
     if (localTm(t)) {
       char tm12[12];
       fmt12(tm12, sizeof tm12, t.tm_hour, t.tm_min);
-      snprintf(b, sizeof b, "%s %d %s  %s", DOW[t.tm_wday], t.tm_mday, MON[t.tm_mon], tm12);
+      snprintf(b, sizeof b, "%s %d %s %s", DOW[t.tm_wday], t.tm_mday, MON[t.tm_mon], tm12);
     } else snprintf(b, sizeof b, "--:--");
-    txt(b, 430, 15, F9, C_DIM, textdatum_t::middle_right);
+    txt(b, 274, 15, F9, C_DIM, textdatum_t::middle_right, 0.9f);
   }
   int lit = 0;
   if (WiFi.status() == WL_CONNECTED) {
@@ -257,17 +260,17 @@ static void drawTop() {
   }
   for (int i = 0; i < 4; i++) {
     int h = 4 + i * 3;
-    tft.fillRect(442 + i * 6, 22 - h, 4, h, i < lit ? C_OK : C_TRACK);
+    tft.fillRect(284 + i * 6, 22 - h, 4, h, i < lit ? C_OK : C_TRACK);
   }
 }
 static void drawNav() {
   static const char* names[] = {"Status", "Forecast", "Wash", "Device", "Web"};
-  tft.fillRect(0, NAV_Y, 480, NAV_H, C_NAV);
-  tft.drawFastHLine(0, NAV_Y, 480, C_LINE);
+  tft.fillRect(0, NAV_Y, SW, NAV_H, C_NAV);
+  tft.drawFastHLine(0, NAV_Y, SW, C_LINE);
   for (int i = 0; i < SCR_N; i++) {
     bool on = i == scr;
-    if (on) tft.fillRect(i * TAB_W + TAB_W / 2 - 30, NAV_Y + 1, 60, 3, C_OK);
-    txt(names[i], i * TAB_W + TAB_W / 2, NAV_Y + 25, on ? FB9 : F9, on ? C_OK : C_DIM, textdatum_t::middle_center);
+    if (on) tft.fillRect(i * TAB_W + TAB_W / 2 - 22, NAV_Y + 1, 44, 3, C_OK);
+    txt(names[i], i * TAB_W + TAB_W / 2, NAV_Y + 27, on ? FB9 : F9, on ? C_OK : C_DIM, textdatum_t::middle_center, 0.8f);
   }
 }
 
@@ -281,7 +284,7 @@ static void arc(int cx, int cy, float p, uint32_t col) {  // progress ring start
   else { tft.fillArc(cx, cy, r0, r1, 270, 360, col); tft.fillArc(cx, cy, r0, r1, 0, a1 - 360, col); }
 }
 static void drawRing() {
-  const int cx = 98, cy = 152;
+  const int cx = SW / 2, cy = 122;
   tft.fillRect(cx - 84, cy - 84, 168, 168, C_BG);
   tft.fillArc(cx, cy, 64, 76, 0, 360, C_TRACK);
   char big[16], sub[26], b[24];
@@ -330,10 +333,10 @@ static void drawRing() {
 static void gauge(int by, const char* name, float p, float th, uint32_t col) {
   char b[40];
   snprintf(b, sizeof b, "%s, next 6 h", name);
-  txt(b, 202, by + 8, F9, C_DIM);
+  txt(b, 24, by + 8, F9, C_DIM);
   if (p >= 0) snprintf(b, sizeof b, "%d%%", (int)(p * 100 + 0.5f)); else snprintf(b, sizeof b, "--");
-  txt(b, 454, by + 8, FB12, col, textdatum_t::middle_right);
-  const int bx = 202, bw = 252;
+  txt(b, 296, by + 8, FB12, col, textdatum_t::middle_right);
+  const int bx = 24, bw = 272;
   tft.fillSmoothRoundRect(bx, by + 20, bw, 8, 4, C_TRACK);
   if (p >= 0) tft.fillSmoothRoundRect(bx, by + 20, max(8, (int)(p * bw)), 8, 4, col);
   if (th >= 0) {
@@ -343,58 +346,58 @@ static void gauge(int by, const char* name, float p, float th, uint32_t col) {
   }
 }
 static void chip(int x, const char* label, const char* val, uint32_t col) {
-  card(x, 170, 88, 56);
-  txt(label, x + 8, 184, F9, C_DIM);
-  txt(val, x + 8, 208, FB12, col);
+  card(x, 344, 92, 58);
+  txt(label, x + 9, 359, F9, C_DIM, textdatum_t::middle_left, 0.85f);
+  txt(val, x + 9, 384, FB12, col);
 }
 static void drawStatus() {
   drawRing();
-  card(190, 40, 276, 122);
-  gauge(48, "Rain", uc.everOk ? uc.pRain : -1, uc.thRain, C_RAIN);
-  gauge(104, "Dust", uc.everOk ? uc.pDust : -1, uc.thDust, C_DUST);
+  card(12, 210, 296, 122);
+  gauge(218, "Rain", uc.everOk ? uc.pRain : -1, uc.thRain, C_RAIN);
+  gauge(274, "Dust", uc.everOk ? uc.pDust : -1, uc.thDust, C_DUST);
   char b[24], c[24];
   uint32_t col;
   if (uc.pm10 >= 0) snprintf(b, sizeof b, "%d", (int)(uc.pm10 + 0.5f)); else snprintf(b, sizeof b, "--");
-  chip(190, "PM10", b, C_FG);
+  chip(12, "PM10", b, C_FG);
   if (!isnan(fcTemp)) snprintf(b, sizeof b, "%d C", (int)lroundf(fcTemp)); else snprintf(b, sizeof b, "--");
-  chip(284, "Temp", b, C_FG);
+  chip(114, "Temp", b, C_FG);
   routineText(c, sizeof c, &col);
-  chip(378, "Routine", c, col);
+  chip(216, "Routine", c, col);
   if (uc.pending[0]) {
     snprintf(b, sizeof b, "Pending: %.14s", uc.pending);
-    txt(b, 190, 244, F9, C_DIM);
+    txt(b, SW / 2, 414, F9, C_DIM, textdatum_t::middle_center, 0.85f);
   }
 }
 
 // ---------- Forecast screen ----------
 static void drawForecast() {
-  txt("NEXT 24 HOURS - CHANCE OF", 14, 44, F9, C_DIM);
-  tft.fillSmoothCircle(352, 44, 4, C_RAIN);
-  txt("rain", 362, 44, F9, C_FG);
-  tft.fillSmoothCircle(414, 44, 4, C_DUST);
-  txt("dust", 424, 44, F9, C_FG);
-  if (!fcN) { txt("Forecast not loaded yet", 240, 150, F12, C_DIM, textdatum_t::middle_center); return; }
-  const int x0 = 24, bw = 18, H = 160, base = 62 + H;
+  txt("NEXT 24 HOURS", 12, 46, F9, C_DIM, textdatum_t::middle_left, 0.85f);
+  tft.fillSmoothCircle(212, 46, 4, C_RAIN);
+  txt("rain", 220, 46, F9, C_FG, textdatum_t::middle_left, 0.85f);
+  tft.fillSmoothCircle(262, 46, 4, C_DUST);
+  txt("dust", 270, 46, F9, C_FG, textdatum_t::middle_left, 0.85f);
+  if (!fcN) { txt("Forecast not loaded yet", SW / 2, 200, F12, C_DIM, textdatum_t::middle_center); return; }
+  const int x0 = 16, bw = 12, H = 240, base = 64 + H;
   struct tm t;
   bool have = localTm(t);
   int cur = -1;
   for (int i = 0; i < fcN && have; i++) if (fch[i].day == t.tm_mday && fch[i].hour == t.tm_hour) cur = i;
-  if (cur >= 0) tft.fillRect(x0 + cur * bw, 62, bw, H + 24, C_HI);
-  tft.drawFastHLine(14, base, 452, C_LINE);
+  if (cur >= 0) tft.fillRect(x0 + cur * bw, 64, bw, H + 24, C_HI);
+  tft.drawFastHLine(12, base, 296, C_LINE);
   for (int i = 0; i < fcN; i++) {
     int x = x0 + i * bw;
     int hr = max(2, min(H, (int)(fch[i].r * H + 0.5f))), hd = max(2, min(H, (int)(fch[i].d * H + 0.5f)));
-    tft.fillRoundRect(x + 2, base - hr, 7, hr, hr >= 5 ? 2 : 0, C_RAIN);
-    tft.fillRoundRect(x + 10, base - hd, 7, hd, hd >= 5 ? 2 : 0, C_DUST);
-    if (i % 4 == 0) {
+    tft.fillRoundRect(x + 1, base - hr, 5, hr, hr >= 5 ? 2 : 0, C_RAIN);
+    tft.fillRoundRect(x + 6, base - hd, 5, hd, hd >= 5 ? 2 : 0, C_DUST);
+    if (i % 6 == 0) {
       char b[10];
       fmtHour12(b, sizeof b, fch[i].hour);
-      txt(b, x + bw / 2, base + 13, F9, i == cur ? C_FG : C_DIM, textdatum_t::middle_center);
+      txt(b, x, base + 13, F9, i == cur ? C_FG : C_DIM, textdatum_t::middle_left, 0.8f);
     }
   }
   if (uc.thRain >= 0) {
     int y = base - (int)(uc.thRain * H);
-    for (int x = 14; x < 466; x += 8) tft.drawFastHLine(x, y, 4, C_RAIN);
+    for (int x = 12; x < 308; x += 8) tft.drawFastHLine(x, y, 4, C_RAIN);
   }
   char b[56] = "No rain above the alarm level in 24 h";
   for (int i = 0; i < fcN && uc.thRain >= 0; i++)
@@ -404,7 +407,9 @@ static void drawForecast() {
       snprintf(b, sizeof b, "Rain likely around %s%s", h, !have ? "" : fch[i].day == t.tm_mday ? " today" : " tomorrow");
       break;
     }
-  txt(b, 14, 258, F9, C_DIM);
+  card(12, 334, 296, 64);
+  txt(b, 24, 356, FB9, C_FG, textdatum_t::middle_left, 0.9f);
+  txt("No wash while a bar is above the line", 24, 380, F9, C_DIM, textdatum_t::middle_left, 0.8f);
 }
 
 // ---------- Wash screen ----------
@@ -421,30 +426,30 @@ static void lastWashText(char* o, size_t n) {
   snprintf(o, n, "%d %s %s", tm.tm_mday, MON[tm.tm_mon], h);
 }
 static void drawWashRight() {
-  tft.fillRect(254, 40, 226, 230, C_BG);
+  tft.fillRect(0, 188, SW, NAV_Y - 188, C_BG);
   char b[24];
   if (running) {
-    card(262, 60, 204, 100);
-    txt("Washing", 364, 84, F12, C_OK, textdatum_t::middle_center);
+    card(12, 196, 296, 110);
+    txt("Washing", SW / 2, 222, F12, C_OK, textdatum_t::middle_center);
     fmtMMSS(b, sizeof b, runLeftMs());
-    txt(b, 364, 122, FB18, C_FG, textdatum_t::middle_center);
+    txt(b, SW / 2, 264, FB18, C_FG, textdatum_t::middle_center);
   } else {
-    button(262, 60, 204, 64, "Wash now", true);
-    wrapTxt("Runs brush and pump for 1 minute. Daily limits still apply.", 364, 144, 196, C_DIM);
+    button(12, 196, 296, 72, "Wash now", true);
+    wrapTxt("Runs brush and pump for 1 minute. Daily limits still apply.", SW / 2, 290, 280, C_DIM);
   }
-  if (washMsg[0]) wrapTxt(washMsg, 364, 204, 196, C_BAD, 0.9f, 17);
+  if (washMsg[0]) wrapTxt(washMsg, SW / 2, 350, 280, C_BAD, 0.9f, 17);
 }
 static void drawConfirm() {
-  card(90, 80, 300, 150);
-  txt("Start a 1-minute wash?", 240, 110, FB12, C_FG, textdatum_t::middle_center);
+  card(24, 150, 272, 160);
+  txt("Start a 1-minute wash?", SW / 2, 182, FB12, C_FG, textdatum_t::middle_center, 0.9f);
   char b[40];
   snprintf(b, sizeof b, "Counts as wash %d of %d today.", washesToday() + 1, MAX_PER_DAY);
-  txt(b, 240, 140, F9, C_DIM, textdatum_t::middle_center);
-  button(106, 168, 128, 46, "Cancel", false);
-  button(246, 168, 128, 46, "Start", true);
+  txt(b, SW / 2, 214, F9, C_DIM, textdatum_t::middle_center, 0.9f);
+  button(40, 248, 114, 46, "Cancel", false);
+  button(166, 248, 114, 46, "Start", true);
 }
 static void drawWash() {
-  card(14, 42, 232, 136);
+  card(12, 42, 296, 136);
   char b[32], c[24];
   uint32_t col;
   lastWashText(b, sizeof b);
@@ -456,9 +461,9 @@ static void drawWash() {
   rows[2] = {"Today", today, C_FG};
   for (int i = 0; i < 3; i++) {
     int y = 46 + i * 42;
-    txt(rows[i].l, 28, y + 20, F9, C_DIM);
-    txt(rows[i].v, 232, y + 20, F9, rows[i].c, textdatum_t::middle_right);
-    if (i < 2) tft.drawFastHLine(24, y + 41, 212, C_LINE);
+    txt(rows[i].l, 26, y + 20, F9, C_DIM);
+    txt(rows[i].v, 294, y + 20, FB9, rows[i].c, textdatum_t::middle_right);
+    if (i < 2) tft.drawFastHLine(22, y + 41, 276, C_LINE);
   }
   drawWashRight();
   if (confirmOpen) drawConfirm();
@@ -484,13 +489,13 @@ static void startManualWash() {
 static void devRow(int i, const char* l, const char* v, uint32_t col, bool dot, uint32_t dotCol, bool labels) {
   int y = 44 + i * 40;
   if (labels) {
-    txt(l, 28, y + 20, F9, C_DIM);
-    if (i < 4) tft.drawFastHLine(24, y + 39, 244, C_LINE);
-  } else tft.fillRect(130, y + 2, 146, 36, C_CARD);
-  txt(v, 268, y + 20, F9, col, textdatum_t::middle_right);
+    txt(l, 26, y + 20, F9, C_DIM);
+    if (i < 4) tft.drawFastHLine(22, y + 39, 276, C_LINE);
+  } else tft.fillRect(120, y + 2, 182, 36, C_CARD);
+  txt(v, 294, y + 20, F9, col, textdatum_t::middle_right);
   if (dot) {
     tft.setFont(F9);
-    tft.fillSmoothCircle(268 - tft.textWidth(v) - 12, y + 20, 4, dotCol);
+    tft.fillSmoothCircle(294 - tft.textWidth(v) - 12, y + 20, 4, dotCol);
   }
 }
 static void drawDevRows(bool labels) {
@@ -515,33 +520,33 @@ static void drawDevRows(bool labels) {
          true, running ? C_OK : panelOnline ? C_OK : C_BAD, labels);
   unsigned long s = millis() / 1000UL;
   snprintf(b, sizeof b, "Up %lu d %lu h %lu min", s / 86400, (s / 3600) % 24, (s / 60) % 60);
-  tft.fillRect(290, 190, 190, 24, C_BG);
-  txt(b, 381, 200, F9, C_DIM, textdatum_t::middle_center);
+  tft.fillRect(0, 390, SW, 26, C_BG);
+  txt(b, SW / 2, 402, F9, C_DIM, textdatum_t::middle_center, 0.85f);
 }
 static void drawDevice() {
-  card(14, 42, 268, 204);
+  card(12, 42, 296, 204);
   drawDevRows(true);
-  button(296, 52, 170, 56, "Change Wi-Fi", false);
-  button(296, 120, 170, 56, "Check now", false);
+  button(12, 258, 296, 54, "Change Wi-Fi", false);
+  button(12, 322, 296, 54, "Check now", false);
 }
 
 // ---------- Web screen: QR code of the live website (for the committee) ----------
 static void drawWeb() {
-  tft.fillSmoothRoundRect(24, 42, 220, 220, 12, TFT_WHITE);  // white card = the quiet zone around the code
-  tft.qrcode("https://hilla-ai.duckdns.org/", 46, 64, 176, 2);
-  txt("Live website", 262, 66, FB12, C_FG);
-  txt("Scan with a phone camera", 262, 96, F9, C_DIM);
-  txt("hilla-ai.duckdns.org", 262, 128, FB9, C_OK);
+  tft.fillSmoothRoundRect(50, 42, 220, 220, 12, TFT_WHITE);  // white card = the quiet zone around the code
+  tft.qrcode("https://hilla-ai.duckdns.org/", 72, 64, 176, 2);
+  txt("Live website", SW / 2, 282, FB12, C_FG, textdatum_t::middle_center);
+  txt("Scan with a phone camera", SW / 2, 308, F9, C_DIM, textdatum_t::middle_center);
+  txt("hilla-ai.duckdns.org", SW / 2, 332, FB9, C_OK, textdatum_t::middle_center);
   static const char* pts[] = {"AI rain & dust forecast", "Every hourly decision", "Washes and model results", "Arabic / English"};
   for (int i = 0; i < 4; i++) {
-    tft.fillSmoothCircle(268, 168 + i * 24, 3, C_OK);
-    txt(pts[i], 280, 168 + i * 24, F9, C_FG);
+    tft.fillSmoothCircle(72, 358 + i * 17, 3, C_OK);
+    txt(pts[i], 84, 358 + i * 17, F9, C_FG, textdatum_t::middle_left, 0.85f);
   }
 }
 
 // ---------- drawing control ----------
 static void uiFull() {
-  tft.fillRect(0, TOP_H, 480, NAV_Y - TOP_H, C_BG);
+  tft.fillRect(0, TOP_H, SW, NAV_Y - TOP_H, C_BG);
   drawTop();
   drawNav();
   switch (scr) {
@@ -562,9 +567,9 @@ static void uiPeriodic() {  // once a second: only the small parts that change
 }
 static void uiScreenMsg(const char* a, const char* b) {
   tft.fillScreen(C_BG);
-  txt("HILLA PV", 240, 110, FB18, C_FG, textdatum_t::middle_center);
-  txt(a, 240, 165, F12, C_OK, textdatum_t::middle_center);
-  txt(b, 240, 200, F9, C_DIM, textdatum_t::middle_center);
+  txt("HILLA PV", SW / 2, 180, FB18, C_FG, textdatum_t::middle_center);
+  wrapTxt(a, SW / 2, 236, 290, C_OK, 1.0f, 22);
+  wrapTxt(b, SW / 2, 286, 290, C_DIM, 0.9f, 18);
 }
 
 // shown by wifiSetup(): connecting, or the setup network is open
@@ -577,16 +582,16 @@ void uiWifiDone() { uiFull(); }
 // ---------- calibration (touch the arrows), saved as 8 numbers in flash ----------
 static void uiCalibrate() {
   tft.fillScreen(C_BG);
-  txt("Touch the arrows to calibrate", 240, 160, F12, C_FG, textdatum_t::middle_center);
+  txt("Touch the arrows to calibrate", SW / 2, SH / 2, F12, C_FG, textdatum_t::middle_center, 0.9f);
   uint16_t p[8];
   tft.calibrateTouch(p, (uint32_t)C_OK, (uint32_t)C_BG, 20);
-  prefs.putBytes("cal", p, sizeof p);
+  prefs.putBytes("calp", p, sizeof p);
   Serial.println("touch calibration saved");
 }
 
 void uiBegin() {
   tft.init();
-  tft.setRotation(1);  // landscape 480x320
+  tft.setRotation(UI_ROT);  // portrait 320x480
   tft.fillScreen(C_BG);
   uiScreenMsg("Starting...", "Hold the screen now to recalibrate the touch");
   // hold a finger on the screen for the first 3 s -> calibrate again
@@ -602,8 +607,8 @@ void uiBegin() {
   }
   bool hold = n > 0 && touched * 10 >= n * 9;
   uint16_t p[8];
-  if (!hold && prefs.getBytesLength("cal") == sizeof p) {
-    prefs.getBytes("cal", p, sizeof p);
+  if (!hold && prefs.getBytesLength("calp") == sizeof p) {
+    prefs.getBytes("calp", p, sizeof p);
     tft.setTouchCalibrate(p);
   } else uiCalibrate();
   lastRun = running;
@@ -684,16 +689,16 @@ static void onTap(int x, int y) {
   }
   if (scr == SCR_WASH) {
     if (confirmOpen) {
-      if (inRect(x, y, 246, 168, 128, 46)) { startManualWash(); uiFull(); }
-      else if (inRect(x, y, 106, 168, 128, 46)) { confirmOpen = false; uiFull(); }
-    } else if (!running && inRect(x, y, 262, 60, 204, 64)) {
+      if (inRect(x, y, 166, 248, 114, 46)) { startManualWash(); uiFull(); }
+      else if (inRect(x, y, 40, 248, 114, 46)) { confirmOpen = false; uiFull(); }
+    } else if (!running && inRect(x, y, 12, 196, 296, 72)) {
       washMsg[0] = 0;
       confirmOpen = true;
       drawConfirm();
     }
   } else if (scr == SCR_DEVICE && !running) {
-    if (inRect(x, y, 296, 52, 170, 56)) { wifiSetup(true); uiFull(); }
-    else if (inRect(x, y, 296, 120, 170, 56)) pollNow();
+    if (inRect(x, y, 12, 258, 296, 54)) { wifiSetup(true); uiFull(); }
+    else if (inRect(x, y, 12, 322, 296, 54)) pollNow();
   }
 }
 void uiTick() {
