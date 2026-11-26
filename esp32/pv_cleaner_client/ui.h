@@ -115,16 +115,25 @@ static char lastClean[28] = "";
 bool uiStatusPending = false;  // status request postponed until a wash ends
 
 // ---------- look ----------
-static const uint32_t C_BG = 0x0b1018, C_CARD = 0x141c27, C_LINE = 0x223042, C_FG = 0xe8eef4, C_DIM = 0x8696a8,
-                      C_OK = 0x3ddc97, C_RAIN = 0x4aa8ff, C_DUST = 0xf2b544, C_BAD = 0xff6b6b, C_TRACK = 0x1c2736,
-                      C_NAV = 0x0e1520, C_DARK = 0x06261a, C_HI = 0x1a2635;
+// colours: dark (night) or light (day) theme, chosen on the Device tab and saved in flash ("light")
+static uint32_t C_BG, C_CARD, C_LINE, C_FG, C_DIM, C_OK, C_RAIN, C_DUST, C_BAD, C_TRACK, C_NAV, C_DARK, C_HI;
+static bool uiLight = false;
+static void applyTheme(bool light) {
+  uiLight = light;
+  static const uint32_t D[] = {0x0b1018, 0x141c27, 0x223042, 0xe8eef4, 0x8696a8, 0x3ddc97, 0x4aa8ff, 0xf2b544, 0xff6b6b, 0x1c2736, 0x0e1520, 0x06261a, 0x1a2635};
+  static const uint32_t L[] = {0xf3f5f8, 0xffffff, 0xd3dae3, 0x111a24, 0x56677a, 0x168a57, 0x1f6fc4, 0xb57900, 0xd32f2f, 0xe2e7ee, 0xe8ecf1, 0xffffff, 0xdce5ef};
+  const uint32_t* c = light ? L : D;
+  uint32_t* v[] = {&C_BG, &C_CARD, &C_LINE, &C_FG, &C_DIM, &C_OK, &C_RAIN, &C_DUST, &C_BAD, &C_TRACK, &C_NAV, &C_DARK, &C_HI};
+  for (int i = 0; i < 13; i++) *v[i] = c[i];
+}
 #define F9 (&fonts::FreeSans9pt7b)
 #define F12 (&fonts::FreeSans12pt7b)
 #define FB9 (&fonts::FreeSansBold9pt7b)
 #define FB12 (&fonts::FreeSansBold12pt7b)
 #define FB18 (&fonts::FreeSansBold18pt7b)
-// portrait 320 x 480 (design "Portrait-*" on the claude.ai canvas). UI_ROT 0 = header pins at the top; 2 = upside down
-#define UI_ROT 0
+// portrait 320 x 480 (design "Portrait-*" on the claude.ai canvas). Rotation 0 or 2 (upside down), chosen on the
+// Device tab and saved in flash ("rot"); the touch calibration does not depend on it
+static uint8_t uiRot = 0;
 static const int SW = 320, SH = 480;
 static const int TOP_H = 30, NAV_H = 52, NAV_Y = SH - NAV_H;
 enum { SCR_STATUS, SCR_FORECAST, SCR_WASH, SCR_DEVICE, SCR_WEB, SCR_N };
@@ -172,13 +181,13 @@ static void card(int x, int y, int w, int h) {
   tft.fillSmoothRoundRect(x, y, w, h, 10, C_LINE);
   tft.fillSmoothRoundRect(x + 1, y + 1, w - 2, h - 2, 9, C_CARD);
 }
-static void button(int x, int y, int w, int h, const char* s, bool primary, bool enabled = true) {
+static void button(int x, int y, int w, int h, const char* s, bool primary, bool enabled = true, float sz = 1.0f) {
   if (primary) tft.fillSmoothRoundRect(x, y, w, h, 12, enabled ? C_OK : C_TRACK);
   else {
     tft.fillSmoothRoundRect(x, y, w, h, 12, C_LINE);
     tft.fillSmoothRoundRect(x + 1, y + 1, w - 2, h - 2, 11, C_BG);
   }
-  txt(s, x + w / 2, y + h / 2, FB12, primary ? (enabled ? C_DARK : C_DIM) : C_FG, textdatum_t::middle_center);
+  txt(s, x + w / 2, y + h / 2, FB12, primary ? (enabled ? C_DARK : C_DIM) : C_FG, textdatum_t::middle_center, sz);
 }
 static bool inRect(int px, int py, int x, int y, int w, int h) { return px >= x && px < x + w && py >= y && py < y + h; }
 
@@ -520,14 +529,16 @@ static void drawDevRows(bool labels) {
          true, running ? C_OK : panelOnline ? C_OK : C_BAD, labels);
   unsigned long s = millis() / 1000UL;
   snprintf(b, sizeof b, "Up %lu d %lu h %lu min", s / 86400, (s / 3600) % 24, (s / 60) % 60);
-  tft.fillRect(0, 390, SW, 26, C_BG);
-  txt(b, SW / 2, 402, F9, C_DIM, textdatum_t::middle_center, 0.85f);
+  tft.fillRect(0, 398, SW, 24, C_BG);
+  txt(b, SW / 2, 410, F9, C_DIM, textdatum_t::middle_center, 0.85f);
 }
+// Device buttons, 2 x 2: Change Wi-Fi | Check now / Day-Night | Rotate
+static const int BX[] = {12, 166, 12, 166}, BY[] = {256, 256, 322, 322}, BW = 142, BH = 56;
 static void drawDevice() {
   card(12, 42, 296, 204);
   drawDevRows(true);
-  button(12, 258, 296, 54, "Change Wi-Fi", false);
-  button(12, 322, 296, 54, "Check now", false);
+  const char* lab[] = {"Change Wi-Fi", "Check now", uiLight ? "Night mode" : "Day mode", "Rotate 180"};
+  for (int i = 0; i < 4; i++) button(BX[i], BY[i], BW, BH, lab[i], false, true, 0.75f);
 }
 
 // ---------- Web screen: QR code of the live website (for the committee) ----------
@@ -590,8 +601,10 @@ static void uiCalibrate() {
 }
 
 void uiBegin() {
+  applyTheme(prefs.getBool("light", false));
+  uiRot = prefs.getUChar("rot", 0) == 2 ? 2 : 0;
   tft.init();
-  tft.setRotation(UI_ROT);  // portrait 320x480
+  tft.setRotation(uiRot);  // portrait 320x480
   tft.fillScreen(C_BG);
   uiScreenMsg("Starting...", "Hold the screen now to recalibrate the touch");
   // hold a finger on the screen for the first 3 s -> calibrate again
@@ -696,9 +709,18 @@ static void onTap(int x, int y) {
       confirmOpen = true;
       drawConfirm();
     }
-  } else if (scr == SCR_DEVICE && !running) {
-    if (inRect(x, y, 12, 258, 296, 54)) { wifiSetup(true); uiFull(); }
-    else if (inRect(x, y, 12, 322, 296, 54)) pollNow();
+  } else if (scr == SCR_DEVICE) {
+    if (inRect(x, y, BX[2], BY[2], BW, BH)) {  // day / night: allowed during a wash too
+      applyTheme(!uiLight);
+      prefs.putBool("light", uiLight);
+      uiFull();
+    } else if (inRect(x, y, BX[3], BY[3], BW, BH)) {  // turn the picture upside down
+      uiRot = uiRot == 0 ? 2 : 0;
+      prefs.putUChar("rot", uiRot);
+      tft.setRotation(uiRot);
+      uiFull();
+    } else if (!running && inRect(x, y, BX[0], BY[0], BW, BH)) { wifiSetup(true); uiFull(); }
+    else if (!running && inRect(x, y, BX[1], BY[1], BW, BH)) pollNow();
   }
 }
 void uiTick() {
