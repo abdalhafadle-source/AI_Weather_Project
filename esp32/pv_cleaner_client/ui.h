@@ -4,6 +4,7 @@
 // Nothing here changes the safety rules; the relay stop-on-time logic stays in loop() of the .ino.
 #pragma once
 #include <LovyanGFX.hpp>
+#include "fonts_inter.h"
 
 void wifiSetup(bool force);
 void pollNow();
@@ -143,13 +144,35 @@ static bool confirmOpen = false, busy = false, lastRun = false;
 static char washMsg[44] = "";
 static uint32_t washMsgUntil = 0;
 
+// ---------- text: smooth Inter fonts (fonts_inter.h, made by esp32/make_fonts.py) ----------
+// The drawing code still names the old fonts (F9, FB12 ...) and a size factor; setF() picks the Inter font of the
+// nearest real pixel size, so nothing is shrunk by fractions. Soft edges are blended with `surf`, the colour under
+// the text (the panel cannot be read back), so whatever draws a card or button sets surf first.
+static lgfx::VLWfont vR13, vR15, vR19, vB13, vB15, vB19, vB28;
+static uint32_t surf;
+static void fontsBegin() {
+  struct { lgfx::VLWfont* f; const uint8_t* d; } all[] = {{&vR13, INTER_R13}, {&vR15, INTER_R15}, {&vR19, INTER_R19},
+      {&vB13, INTER_B13}, {&vB15, INTER_B15}, {&vB19, INTER_B19}, {&vB28, INTER_B28}};
+  for (auto& a : all) {
+    auto* w = new lgfx::PointerWrapper();
+    w->set(a.d);
+    a.f->loadFont(w);
+  }
+}
+static void setF(const lgfx::IFont* f, float sz = 1.0f) {
+  bool bold = f == FB9 || f == FB12 || f == FB18;
+  float px = (f == F12 || f == FB12 ? 19 : f == FB18 ? 28 : 15) * sz;
+  const lgfx::IFont* r = bold ? (px >= 24 ? &vB28 : px >= 17 ? &vB19 : px >= 14 ? &vB15 : &vB13)
+                              : (px >= 17 ? &vR19 : px >= 14 ? &vR15 : &vR13);
+  tft.setFont(r);
+  tft.setTextSize(1.0f);
+}
 static void txt(const char* s, int x, int y, const lgfx::IFont* f, uint32_t col, textdatum_t d = textdatum_t::middle_left, float sz = 1.0f) {
-  tft.setFont(f);
-  tft.setTextSize(sz);
+  setF(f, sz);
+  tft.setBaseColor(surf);
   tft.setTextColor(col);
   tft.setTextDatum(d);
   tft.drawString(s, x, y);
-  tft.setTextSize(1.0f);
 }
 // centered text wrapped by words inside maxW pixels; returns the next free y
 static int wrapTxt(const char* s, int cx, int y, int maxW, uint32_t col, float sz = 0.85f, int step = 15) {
@@ -160,10 +183,8 @@ static int wrapTxt(const char* s, int cx, int y, int maxW, uint32_t col, float s
     int wl = e ? (int)(e - p) : (int)strlen(p);
     char t[48];
     snprintf(t, sizeof t, "%s%s%.*s", line, line[0] ? " " : "", wl, p);
-    tft.setFont(F9);
-    tft.setTextSize(sz);
+    setF(F9, sz);
     int w = tft.textWidth(t);
-    tft.setTextSize(1.0f);
     if (line[0] && w > maxW) {
       txt(line, cx, y, F9, col, textdatum_t::middle_center, sz);
       y += step;
@@ -180,14 +201,17 @@ static void fmtHour12(char* o, size_t n, int h) { snprintf(o, n, "%d %s", h % 12
 static void card(int x, int y, int w, int h) {
   tft.fillSmoothRoundRect(x, y, w, h, 10, C_LINE);
   tft.fillSmoothRoundRect(x + 1, y + 1, w - 2, h - 2, 9, C_CARD);
+  surf = C_CARD;  // text after a card is drawn on it
 }
 static void button(int x, int y, int w, int h, const char* s, bool primary, bool enabled = true, float sz = 1.0f) {
-  if (primary) tft.fillSmoothRoundRect(x, y, w, h, 12, enabled ? C_OK : C_TRACK);
+  uint32_t old = surf;
+  if (primary) tft.fillSmoothRoundRect(x, y, w, h, 12, surf = enabled ? C_OK : C_TRACK);
   else {
     tft.fillSmoothRoundRect(x, y, w, h, 12, C_LINE);
-    tft.fillSmoothRoundRect(x + 1, y + 1, w - 2, h - 2, 11, C_BG);
+    tft.fillSmoothRoundRect(x + 1, y + 1, w - 2, h - 2, 11, surf = C_BG);
   }
   txt(s, x + w / 2, y + h / 2, FB12, primary ? (enabled ? C_DARK : C_DIM) : C_FG, textdatum_t::middle_center, sz);
+  surf = old;
 }
 static bool inRect(int px, int py, int x, int y, int w, int h) { return px >= x && px < x + w && py >= y && py < y + h; }
 
@@ -248,7 +272,7 @@ static const char* routineText(char* o, size_t n, uint32_t* col) {
 
 // ---------- top bar and navigation ----------
 static void drawTop() {
-  tft.fillRect(0, 0, SW, TOP_H - 1, C_BG);
+  tft.fillRect(0, 0, SW, TOP_H - 1, surf = C_BG);
   tft.drawFastHLine(0, TOP_H - 1, SW, C_LINE);
   txt("HILLA PV", 12, 15, FB9, C_FG);
   char b[32];
@@ -274,13 +298,14 @@ static void drawTop() {
 }
 static void drawNav() {
   static const char* names[] = {"Status", "Forecast", "Wash", "Device", "Web"};
-  tft.fillRect(0, NAV_Y, SW, NAV_H, C_NAV);
+  tft.fillRect(0, NAV_Y, SW, NAV_H, surf = C_NAV);
   tft.drawFastHLine(0, NAV_Y, SW, C_LINE);
   for (int i = 0; i < SCR_N; i++) {
     bool on = i == scr;
     if (on) tft.fillRect(i * TAB_W + TAB_W / 2 - 22, NAV_Y + 1, 44, 3, C_OK);
     txt(names[i], i * TAB_W + TAB_W / 2, NAV_Y + 27, on ? FB9 : F9, on ? C_OK : C_DIM, textdatum_t::middle_center, 0.8f);
   }
+  surf = C_BG;
 }
 
 // ---------- Status screen ----------
@@ -294,6 +319,7 @@ static void arc(int cx, int cy, float p, uint32_t col) {  // progress ring start
 }
 static void drawRing() {
   const int cx = SW / 2, cy = 122;
+  surf = C_BG;
   tft.fillRect(cx - 84, cy - 84, 168, 168, C_BG);
   tft.fillArc(cx, cy, 64, 76, 0, 360, C_TRACK);
   char big[16], sub[26], b[24];
@@ -321,13 +347,11 @@ static void drawRing() {
     return;
   }
   txt("AI decision", cx, cy - 36, F9, C_DIM, textdatum_t::middle_center, 0.8f);
-  tft.setFont(FB18);
+  setF(FB18);
   txt(big, cx, cy - 6, tft.textWidth(big) <= 100 ? FB18 : FB12, col, textdatum_t::middle_center);
   // the sub line is up to 22 chars: shrink to two short lines when it does not fit the ring
-  tft.setFont(F9);
-  tft.setTextSize(0.8f);
+  setF(F9, 0.8f);
   int sw = tft.textWidth(sub);
-  tft.setTextSize(1.0f);
   if (sw <= 100) txt(sub, cx, cy + 28, F9, C_DIM, textdatum_t::middle_center, 0.8f);
   else {
     char* sp = strchr(sub + strlen(sub) / 2 - 3, ' ');
@@ -374,6 +398,7 @@ static void drawStatus() {
   chip(216, "Routine", c, col);
   if (uc.pending[0]) {
     snprintf(b, sizeof b, "Pending: %.14s", uc.pending);
+    surf = C_BG;
     txt(b, SW / 2, 414, F9, C_DIM, textdatum_t::middle_center, 0.85f);
   }
 }
@@ -435,6 +460,7 @@ static void lastWashText(char* o, size_t n) {
   snprintf(o, n, "%d %s %s", tm.tm_mday, MON[tm.tm_mon], h);
 }
 static void drawWashRight() {
+  surf = C_BG;
   tft.fillRect(0, 188, SW, NAV_Y - 188, C_BG);
   char b[24];
   if (running) {
@@ -446,6 +472,7 @@ static void drawWashRight() {
     button(12, 196, 296, 72, "Wash now", true);
     wrapTxt("Runs brush and pump for 1 minute. Daily limits still apply.", SW / 2, 290, 280, C_DIM);
   }
+  surf = C_BG;
   if (washMsg[0]) wrapTxt(washMsg, SW / 2, 350, 280, C_BAD, 0.9f, 17);
 }
 static void drawConfirm() {
@@ -503,11 +530,12 @@ static void devRow(int i, const char* l, const char* v, uint32_t col, bool dot, 
   } else tft.fillRect(120, y + 2, 182, 36, C_CARD);
   txt(v, 294, y + 20, F9, col, textdatum_t::middle_right);
   if (dot) {
-    tft.setFont(F9);
+    setF(F9);
     tft.fillSmoothCircle(294 - tft.textWidth(v) - 12, y + 20, 4, dotCol);
   }
 }
 static void drawDevRows(bool labels) {
+  surf = C_CARD;
   char b[40];
   bool wf = WiFi.status() == WL_CONNECTED;
   String ssid = wf ? WiFi.SSID() : String("not connected");
@@ -529,7 +557,7 @@ static void drawDevRows(bool labels) {
          true, running ? C_OK : panelOnline ? C_OK : C_BAD, labels);
   unsigned long s = millis() / 1000UL;
   snprintf(b, sizeof b, "Up %lu d %lu h %lu min", s / 86400, (s / 3600) % 24, (s / 60) % 60);
-  tft.fillRect(0, 398, SW, 24, C_BG);
+  tft.fillRect(0, 398, SW, 24, surf = C_BG);
   txt(b, SW / 2, 410, F9, C_DIM, textdatum_t::middle_center, 0.85f);
 }
 // Device buttons, 2 x 2: Change Wi-Fi | Check now / Day-Night | Rotate
@@ -559,7 +587,7 @@ static void drawWeb() {
 static void uiFull() {
   tft.fillRect(0, TOP_H, SW, NAV_Y - TOP_H, C_BG);
   drawTop();
-  drawNav();
+  drawNav();  // leaves surf = C_BG for the page
   switch (scr) {
     case SCR_STATUS: drawStatus(); break;
     case SCR_FORECAST: drawForecast(); break;
@@ -577,7 +605,7 @@ static void uiPeriodic() {  // once a second: only the small parts that change
   } else if (scr == SCR_DEVICE) drawDevRows(false);
 }
 static void uiScreenMsg(const char* a, const char* b) {
-  tft.fillScreen(C_BG);
+  tft.fillScreen(surf = C_BG);
   txt("HILLA PV", SW / 2, 180, FB18, C_FG, textdatum_t::middle_center);
   wrapTxt(a, SW / 2, 236, 290, C_OK, 1.0f, 22);
   wrapTxt(b, SW / 2, 286, 290, C_DIM, 0.9f, 18);
@@ -592,7 +620,7 @@ void uiWifiDone() { uiFull(); }
 
 // ---------- calibration (touch the arrows), saved as 8 numbers in flash ----------
 static void uiCalibrate() {
-  tft.fillScreen(C_BG);
+  tft.fillScreen(surf = C_BG);
   txt("Touch the arrows to calibrate", SW / 2, SH / 2, F12, C_FG, textdatum_t::middle_center, 0.9f);
   uint16_t p[8];
   tft.calibrateTouch(p, (uint32_t)C_OK, (uint32_t)C_BG, 20);
@@ -604,6 +632,7 @@ void uiBegin() {
   applyTheme(prefs.getBool("light", false));
   uiRot = prefs.getUChar("rot", 0) == 2 ? 2 : 0;
   tft.init();
+  fontsBegin();
   tft.setRotation(uiRot);  // portrait 320x480
   tft.fillScreen(C_BG);
   uiScreenMsg("Starting...", "Hold the screen now to recalibrate the touch");
