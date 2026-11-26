@@ -1,20 +1,20 @@
 {
-  "command_id": "2026-11-25T03:00:00+03:00",
-  "generated_at": "2026-11-25T03:05:04+03:00",
-  "valid_until": "2026-11-25T04:00:00+03:00",
-  "action": "wait",
+  "command_id": "2026-11-26T03:00:00+03:00",
+  "generated_at": "2026-11-26T03:05:05+03:00",
+  "valid_until": "2026-11-26T04:00:00+03:00",
+  "action": "idle",
   "pump": false,
   "max_duration_min": 30,
-  "reason": "device offline",
-  "p_rain": 0.002,
-  "p_dust": 0.016,
+  "reason": "nothing to clean",
+  "p_rain": 0.0,
+  "p_dust": 0.01,
   "thresholds": {
     "rain": 0.331,
     "dust": 0.422
   },
   "now": {
     "rain_mm": 0.0,
-    "pm10": 49.3,
+    "pm10": 32.7,
     "metar_rain": false,
     "metar_strong_dust": false,
     "metar_haze": false,
@@ -22,12 +22,10 @@
     "metar_ok": true,
     "metar_available": 2
   },
-  "pending": [
-    "dust"
-  ],
+  "pending": [],
   "routine": {
     "days": 7,
-    "due": "2026-11-24T16:00:00+03:00"
+    "due": "2026-12-03T02:00:00+03:00"
   },
   "model_trained_until": "2026-08-01 10:00:00",
   "source": "Open-Meteo.com (CC BY 4.0); METAR: aviationweather.gov"
