@@ -600,3 +600,27 @@ command_id,action,reason,p_rain,p_dust,pm10,metar_strong,metar_haze,metar_min_vi
 2026-11-26T01:00:00+03:00,wait,device offline,0.0,0.008,32.0,False,False,7.0
 2026-11-26T02:00:00+03:00,clean,after dust,0.0,0.009,32.7,False,False,7.0
 2026-11-26T03:00:00+03:00,idle,nothing to clean,0.0,0.01,32.7,False,False,7.0
+2026-11-26T04:00:00+03:00,idle,nothing to clean,0.0,0.009,25.9,False,False,7.0
+2026-11-26T05:00:00+03:00,idle,nothing to clean,0.0,0.01,21.0,False,False,8.0
+2026-11-26T06:00:00+03:00,idle,nothing to clean,0.002,0.013,17.8,False,False,8.0
+2026-11-26T07:00:00+03:00,idle,nothing to clean,0.001,0.009,17.4,False,False,8.0
+2026-11-26T08:00:00+03:00,idle,nothing to clean,0.007,0.005,17.4,False,False,8.0
+2026-11-26T09:00:00+03:00,idle,nothing to clean,0.008,0.007,17.0,False,False,8.0
+2026-11-26T10:00:00+03:00,idle,nothing to clean,0.006,0.01,16.2,False,False,8.0
+2026-11-26T11:00:00+03:00,idle,nothing to clean,0.004,0.01,12.2,False,False,8.0
+2026-11-26T12:00:00+03:00,idle,nothing to clean,0.003,0.016,9.8,False,False,8.0
+2026-11-26T13:00:00+03:00,idle,nothing to clean,0.0,0.016,7.0,False,False,8.0
+2026-11-26T14:00:00+03:00,idle,nothing to clean,0.0,0.014,7.6,False,False,8.0
+2026-11-26T15:00:00+03:00,idle,nothing to clean,0.0,0.019,7.1,False,False,8.0
+2026-11-26T16:00:00+03:00,idle,nothing to clean,0.0,0.018,6.2,False,False,8.0
+2026-11-26T17:00:00+03:00,idle,nothing to clean,0.0,0.005,5.6,False,False,7.0
+2026-11-26T18:00:00+03:00,idle,nothing to clean,0.0,0.002,6.8,False,False,7.0
+2026-11-26T19:00:00+03:00,idle,nothing to clean,0.0,0.002,12.1,False,False,7.0
+2026-11-26T20:00:00+03:00,idle,nothing to clean,0.001,0.001,12.3,False,False,7.0
+2026-11-26T21:00:00+03:00,idle,nothing to clean,0.001,0.001,12.7,False,False,7.0
+2026-11-26T22:00:00+03:00,idle,nothing to clean,0.001,0.0,11.3,False,False,7.0
+2026-11-26T23:00:00+03:00,idle,nothing to clean,0.001,0.0,9.8,False,False,7.0
+2026-11-27T00:00:00+03:00,idle,nothing to clean,0.001,0.0,9.4,False,False,6.0
+2026-11-27T01:00:00+03:00,idle,nothing to clean,0.002,0.001,9.8,False,False,6.0
+2026-11-27T02:00:00+03:00,idle,nothing to clean,0.008,0.003,9.3,False,False,6.0
+2026-11-27T03:00:00+03:00,idle,nothing to clean,0.014,0.004,9.3,False,False,7.0
